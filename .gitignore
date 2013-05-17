@@ -2,6 +2,7 @@
 *~
 
 # Compiled source
+*.pyc
 *.o
 
 # OS generated files 
