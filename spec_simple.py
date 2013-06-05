@@ -9,6 +9,7 @@ Functions:
 from math import sqrt,pi
 import pyfits
 import numpy as n
+import numpy as np
 import scipy as sp
 from scipy import optimize,interpolate,ndimage
 import numpy
@@ -19,7 +20,7 @@ import ccdredux as c
 
 #-----------------------------------------------------------------------
 
-def clear_all(nfig=3):
+def clear_all(nfig=10):
    """
    Clears nfig figures
    """
@@ -27,6 +28,46 @@ def clear_all(nfig=3):
    for i in range(nfig):
       plt.figure(i+1)
       plt.clf()
+
+#-----------------------------------------------------------------------
+
+def find_blank_columns(data,comp_axis=0,output_dims=1,findblank=False):
+   """
+   Takes 2-dimensional data and outputs indices of columns not entirely
+   composed of zeros. If output_dims is 1, only the indices of the columns
+   are give. If output_dims = 2, the indices for every point in any of these
+   columns are given. By default, it is actually non-blank columns that are
+   found. Setting findblank to True switches this.
+   """
+   if data.ndim != 2: sys.exit("find_blank_columns takes only 2-dimensional data")
+   if output_dims==1:
+      fbc_tmp = np.zeros(n.shape(data)[1-comp_axis])
+      if comp_axis == 0:
+         gprelim = np.where(data[int(n.shape(data)[comp_axis]/2),:] == 0)[0]
+         for ifbc in range(0,len(gprelim)):
+            if len(data[data[:,gprelim[ifbc]] != 0]) == 0: fbc_tmp[gprelim[ifbc]] = 1
+      else:
+         gprelim = np.where(data[:,int(n.shape(data)[comp_axis]/2)] == 0)[0]
+         for ifbc in range(0,len(gprelim)):
+            if len(data[data[gprelim[ifbc],:] != 0]) == 0: fbc_tmp[gprelim[ifbc]] = 1
+      if findblank: fbc_tmp = 1-fbc_tmp
+      gfbc = np.where(fbc_tmp == 0)[0]
+   elif output_dims==2:
+      fbc_tmp = n.zeros(n.shape(data))
+      if comp_axis == 0:
+         gprelim = np.where(data[int(n.shape(data)[comp_axis]/2),:] == 0)[0]
+         for ifbc in range(0,len(gprelim)):
+            if len(data[data[:,gprelim[ifbc]] != 0]) == 0: fbc_tmp[:,gprelim[ifbc]] = 1
+      else:
+         gprelim = np.where(data[:,int(n.shape(data)[comp_axis]/2)] == 0)[0]
+         for ifbc in range(0,len(gprelim)):
+            if len(data[data[gprelim[ifbc],:] != 0]) == 0: fbc_tmp[gprelim[ifbc],:] = 1
+      if findblank: fbc_tmp = 1-fbc_tmp
+      gfbc = np.where(fbc_tmp == 0)
+   else:
+      sys.exit("output_dims parameter for find_blank_columns must be either 1 or 2. Value was: " + str(output_dims))
+   return gfbc
+
 
 #-----------------------------------------------------------------------
 
@@ -39,7 +80,7 @@ def load_raw_spectrum(filename):
 
 #-----------------------------------------------------------------------
 
-def read_spectrum(filename, informat='text', varspec=True, verbose=True):
+def read_spectrum(filename, informat='text', varspec=True, verbose=True, line=1):
    """
    Reads in an extracted 1D spectrum and possibly the associated variance
    spectrum.  There are two possible input file formats:
@@ -74,9 +115,16 @@ def read_spectrum(filename, informat='text', varspec=True, verbose=True):
    else:
       spec = numpy.loadtxt(filename)
       wavelength = spec[:,0]
-      flux       = spec[:,1]
-      if varspec:
-         var     = spec[:,2]
+      if line == 1:
+         flux       = spec[:,1]
+         if varspec:
+            var     = spec[:,2]
+      else:
+         if varspec:
+            flux = spec[:,2*line-1]
+            var = spec[:,2*line]
+         else:
+            flux = spec[:,line]
       del spec
 
    if verbose:
@@ -98,16 +146,33 @@ def save_spectrum(filename,x,flux,var=None):
    """
    Saves a spectrum as a text file
    """
-
-   if var is not None:
-      outdata = numpy.zeros((x.shape[0],3))
-      outdata[:,2] = var
-      fmtstring = '%7.2f %9.3f %10.4f'
+   if len(np.shape(flux)) == 1:
+      if var is not None:
+         outdata = numpy.zeros((x.shape[0],3))
+         outdata[:,2] = var
+         fmtstring = '%7.2f %9.3f %10.4f'
+      else:
+         outdata = numpy.zeros((x.shape[0],2))
+         fmtstring = '%7.2f %9.3f'
+      outdata[:,1] = flux
+      outdata[:,0] = x
    else:
-      outdata = numpy.zeros((x.shape[0],2))
-      fmtstring = '%7.2f %9.3f'
-   outdata[:,0] = x
-   outdata[:,1] = flux
+      if var is not None:
+         outdata = numpy.zeros((x.shape[1],1+2*np.shape(flux)[0]))
+         fmtstring = '%7.2f %9.3f %10.4f'
+         outdata[:,2] = var[0]
+         for iss in range(1,np.shape(flux)[0]):
+            fmtstring = fmtstring + ' %9.3f %10.4f'
+            outdata[:,2*(iss+1)] = var[iss]
+            outdata[:,2*iss+1] = flux[iss]
+      else:
+         outdata = numpy.zeros((x.shape[1],1+np.shape(flux)[0]))
+         fmtstring = '%7.2f %9.3f'
+         for iss in range(1,np.shape(flux)[0]):
+            fmtstring = fmtstring + ' %9.3f'
+            outdata[:,iss+1] = flux[iss]
+      outdata[:,1] = flux[0]
+      outdata[:,0] = x[0]
    print ""
    print "Saving spectrum to file %s" % filename
    numpy.savetxt(filename,outdata,fmt=fmtstring)
@@ -161,7 +226,7 @@ def plot_spectrum(filename, varspec=True, informat="text",
                   title="Extracted Spectrum",
                   fontsize=12, docolor=True, rmsoffset=0, rmsls=None,
                   add_atm_trans=False, atmscale=1.05, atmfwhm=15.,
-                  atmoffset=0., atmls='-',verbose=True):
+                  atmoffset=0., atmls='-',verbose=True,line=1,output=False):
    """
    Given an input file with spectroscopy information, plot a spectrum.  
    The input file can have one of two formats: text (the default) or mwa
@@ -180,7 +245,7 @@ def plot_spectrum(filename, varspec=True, informat="text",
    """
 
    """ Read in the spectrum, using the appropriate input format """
-   wavelength,flux,var = read_spectrum(filename, informat, varspec, verbose)
+   wavelength,flux,var = read_spectrum(filename, informat, varspec, verbose, line=line)
 
    """ Plot the spectrum """
    if varspec:
@@ -201,6 +266,8 @@ def plot_spectrum(filename, varspec=True, informat="text",
    del flux
    if(varspec):
       del var
+   if output:
+      return wavelength,flux,var
 
 #-----------------------------------------------------------------------
 
@@ -215,7 +282,14 @@ def make_gauss_plus_bkgd(x,mu,sigma,amp,bkgd):
    """
 
    """ Calculate y_mod using current parameter values """
-   ymod = bkgd + amp * numpy.exp(-0.5 * ((x - mu)/sigma)**2)
+   if ((np.shape(bkgd) == ()) & (np.shape(amp) == ())):
+      ymod = bkgd + amp * numpy.exp(-0.5 * ((x - mu)/sigma)**2)
+   elif np.shape(bkgd) == ():
+      x,amp,mu,sigma = x*np.transpose([np.ones(len(mu))]),np.transpose([amp]),np.transpose([mu]),np.transpose([sigma])
+      ymod = bkgd + np.sum(amp * numpy.exp(-0.5 * ((x - mu)/sigma)**2),axis=0)
+   else:
+      x,amp,mu,sigma = x*np.transpose([np.ones(len(mu))]),np.transpose([amp]),np.transpose([mu]),np.transpose([sigma])
+      ymod = bkgd[0] + np.sum(amp * numpy.exp(-0.5 * ((x - mu)/sigma)**2),axis=0)
 
    return ymod
 
@@ -230,6 +304,9 @@ def fit_gauss_plus_bkgd(p,x,y):
     p[1] = mu
     p[2] = sigma
     p[3] = amplitude
+   This function now supports multiple gaussians. p[1-3] must be arrays
+   that contain the respective values of mu, sigma, and amplitude for 
+   the different gaussians. 
    """
 
    """ Unpack p """
@@ -237,6 +314,10 @@ def fit_gauss_plus_bkgd(p,x,y):
    mu   = p[1]
    sig  = p[2]
    amp  = p[3]
+   if len(p) > 4:
+      nps = (len(p)-1)/3
+      for inpsf in range(1,nps):
+         mu,amp,sig = np.append(mu,p[3*inpsf+1]),np.append(amp,p[3*inpsf+2]),np.append(sig,p[3*inpsf+3])
 
    """
    Compute the difference between model and real values
@@ -261,11 +342,43 @@ def fit_gpb_fixmusig(p,x,y,mu,sigma):
    """ Unpack p """
    bkgd = p[0]
    amp  = p[1]
+   if len(p) > 2: amp = p[1:]
+   """
+   Compute the difference between model and real values
+   """
+   if np.shape(amp) != (): sigma,mu = np.ones(len(bkgd))*sigma,np.ones(len(bkgd))*mu
+   ymod = make_gauss_plus_bkgd(x,mu,sigma,amp,bkgd)
+   diff = y - ymod
+
+   return diff
+
+#-----------------------------------------------------------------------
+
+#-----------------------------------------------------------------------
+
+def fit_gpb_fixmu(p,x,y,mu):
+   """
+   Compares the data to the model.  The model is a gaussian plus a 
+    constant background.  In the fit, mu is held fixed.
+   The parameter values are:
+    p[0] = background level
+    p[1] = amplitude
+    p[2] = sigma
+   """
+
+   """ Unpack p """
+   bkgd = p[0]
+   amp  = p[1]
+   sigma = p[2]
+   if len(p) > 3:
+      nps = (len(p)-1)/2
+      for inpsf in range(1,nps):
+         amp,sigma = np.append(amp,p[2*inpsf+1]),np.append(sigma,p[2*inpsf+2])
 
    """
    Compute the difference between model and real values
    """
-
+   if np.shape(amp) != (): mu = np.ones(len(bkgd))*mu
    ymod = make_gauss_plus_bkgd(x,mu,sigma,amp,bkgd)
    diff = y - ymod
 
@@ -316,7 +429,7 @@ def plot_spatial_profile(infile, dispaxis="x"):
 #-----------------------------------------------------------------------
 
 def find_peak(data,dispaxis="x",mu0=None,sig0=None,fixmu=False,fixsig=False,
-   showplot=True,do_subplot=False,verbose=True,apmin=-4.,apmax=4.):
+   showplot=True,do_subplot=False,verbose=True,apmin=-4.,apmax=4.,noblankcolumns=True,findmultiplepeaks=False,nofit=False):
    """
     Compresses a 2d spectrum along the dispersion axis so that
      the trace of the spectrum can be automatically located by fitting
@@ -324,6 +437,8 @@ def find_peak(data,dispaxis="x",mu0=None,sig0=None,fixmu=False,fixsig=False,
      returns the parameters of the best-fit gaussian.
     The default dispersion axis is along the x direction.  To change this
      set the optional parameter dispaxis to "y"
+    If noblankcolumns is True, any column entirely composed of zeros is not
+     used for analysis
    """
 
    # Set the dispersion axis direction
@@ -335,9 +450,19 @@ def find_peak(data,dispaxis="x",mu0=None,sig0=None,fixmu=False,fixsig=False,
 
    """ Compress the data along the dispersion axis and find the max value """
    if data.ndim < 2:
-      cdat = data.copy()
+      gfbc_all = np.where(data > np.min(data)-2.)[0]
+      cdat = data[gfbc_all]
    else:
-      cdat = numpy.median(data,axis=specaxis)
+      if noblankcolumns:
+         gfbc_rows = find_blank_columns(data)
+         gfbc_all = find_blank_columns(data,output_dims=2)
+      else:
+         gfbc_rows = np.arange(np.shape(data)[specaxis])
+         gfbc_all = np.where(data > np.min(data)-2.)
+      if specaxis == 1:
+         cdat = numpy.median(data[:,gfbc_rows],axis=specaxis)
+      else:
+         cdat = numpy.median(data[gfbc_rows,:],axis=specaxis)
       cdat.shape
    x = numpy.arange(1,cdat.shape[0]+1)
 
@@ -363,10 +488,18 @@ def find_peak(data,dispaxis="x",mu0=None,sig0=None,fixmu=False,fixsig=False,
    else:
       if sig0 is None:
          sig0 = 3.0
+         if np.shape(mu0) != (): sig0 *= np.ones(len(mu0))
       fixsignote = " "
    amp0  = cdat.max()
-   bkgd0 = numpy.median(data,axis=None)
-   if(verbose):
+   if np.shape(mu0) != ():
+      amp0 = np.zeros(len(mu0))
+      amp0[0] = cdat.max()
+      for iai in range(1,len(mu0)):
+         giai = np.arange(len(cdat))
+         giai = giai[(giai >= mu0[iai]+apmin-1) & (giai <= mu0[iai]+apmax)]
+         amp0[iai] = cdat[giai].max()
+   bkgd0 = numpy.median(data[gfbc_all],axis=None)
+   if verbose and not nofit and np.shape(mu0) == ():
       print ""
       print "Initial guesses for Gaussian plus background fit"
       print "------------------------------------------------"
@@ -379,19 +512,55 @@ def find_peak(data,dispaxis="x",mu0=None,sig0=None,fixmu=False,fixsig=False,
 
    # Fit a Gaussian plus a background to the compressed spectrum
    mf=100000
-   if fixmu and fixsig:
-      p = [bkgd0,amp0]
-      pt,ier = optimize.leastsq(fit_gpb_fixmusig,p,(x,cdat,mu0,sig0),maxfev=mf)
-      p_out = [pt[0],mu0,sig0,pt[1]]
+   if not nofit:
+      if np.shape(bkgd0) != (): bkgd0 = bkgd0[0]
+      if fixmu and fixsig:
+         if np.shape(amp0) == ():
+            p = [bkgd0,amp0]
+         else:
+            p = np.append(bkgd0,amp0)
+         pt,ier = optimize.leastsq(fit_gpb_fixmusig,p,(x,cdat,mu0,sig0),maxfev=mf)
+         ampout = pt[1:]
+         if np.shape(amp0) == ():
+            bkgdout = pt[0]
+         else:
+            bkgdout *= np.ones(len(ampout))
+         p_out = [bkgdout,mu0,sig0,ampout]
    #p_out,ier = optimize.leastsq(fit_gpb_fixmu,p,(x,cdat,mu0),maxfev=mf)
    #p_out,ier = optimize.leastsq(fit_gpb_fixsig,p,(x,cdat,sig0),maxfev=mf)
-   else:
-      p = [bkgd0,mu0,sig0,amp0]
-      p_out,ier = optimize.leastsq(fit_gauss_plus_bkgd,p,(x,cdat),maxfev=mf)
-
+      elif fixmu and not fixsig:
+         if np.shape(amp0) == ():
+            p = [bkgd0,amp0,sig0]
+         else:
+            p = [bkgd0]
+            for ifmfs in range(0,len(amp0)):
+               p = np.append(p,[amp0[ifmfs],sig0[ifmfs]])
+         pt,ier = optimize.leastsq(fit_gpb_fixmu,p,(x,cdat,mu0),maxfev=mf)
+         if len(pt) > 3:
+            nps = (len(pt)-1)/2
+            ampout,sigout = np.zeros(0),np.zeros(0)
+            for inps in range(0,nps):
+               ampout,sigout = np.append(ampout,pt[2*inps+1]),np.append(sigout,pt[2*inps+2])
+            p_out = [pt[0]*np.ones(len(mu0)),mu0,sigout,ampout]
+         else:
+            p_out = [pt[0],mu0,pt[2],pt[1]]
+      else:
+         if np.shape(mu0) == ():
+            p = [bkgd0,mu0,sig0,amp0]
+            p_out,ier = optimize.leastsq(fit_gauss_plus_bkgd,p,(x,cdat),maxfev=mf)
+         else:
+            p = [bkgd0]
+            for ifmfs in range(0,len(amp0)):
+               p = np.append(p,[mu0[ifmfs],amp0[ifmfs],sig0[ifmfs]])
+               p_out,ier = optimize.leastsq(fit_gauss_plus_bkgd,p,(x,cdat),maxfev=mf)
+               nps = (len(p_out)-1)/3
+            ampout,sigout,muout = np.zeros(0),np.zeros(0),np.zeros(0)
+            for inps in range(0,nps):
+               muout,ampout,sigout = np.append(muout,p_out[3*inps+1]),np.append(ampout,p_out[3*inps+2]),np.append(sigout,p_out[3*inps+2])
+            p_out = [p_out[0]*np.ones(len(mu0)),mu0,sigout,ampout]
 
    # Give results
-   if(verbose):
+   if verbose and not nofit and np.shape(p_out[1]) == ():
       print "Fitted values for Gaussian plus background fit"
       print "----------------------------------------------"
       print " mu         = %7.2f%s"   % (p_out[1],fixmunote)
@@ -402,27 +571,40 @@ def find_peak(data,dispaxis="x",mu0=None,sig0=None,fixmu=False,fixsig=False,
       print ""
 
    # Plot the compressed spectrum
-   if(showplot):
+   if showplot and not nofit:
       if(do_subplot):
+         plt.figure(2)
          plt.subplot(221)
       else:
          plt.figure(2)
          plt.clf()
+      if np.shape(p_out[0]) == 0:
+         bkgd = p_out[0]
+      else:
+         bkgd = np.sum(p_out[0])
       plt.plot(x,cdat,linestyle='steps')
       xmod = numpy.arange(1,cdat.shape[0]+1,0.1)
       ymod = make_gauss_plus_bkgd(xmod,p_out[1],p_out[2],p_out[3],p_out[0])
       plt.plot(xmod,ymod)
-      plt.axvline(p_out[1]+apmin,color='k')
-      plt.axvline(p_out[1]+apmax,color='k')
+      if np.shape(p_out[1]) == ():
+         plt.axvline(p_out[1]+apmin,color='k')
+         plt.axvline(p_out[1]+apmax,color='k')
+      else:
+         for ipap in range(0,len(p_out[1])):
+            plt.axvline(p_out[1][ipap]+apmin,color='k')
+            plt.axvline(p_out[1][ipap]+apmax,color='k')
       plt.xlabel('Pixel number in the spatial direction')
       plt.title('Compressed Spatial Plot')
 
-   return p_out
+   if nofit:
+      return np.array([bkgd0,mu0,sig0,amp0])
+   else:
+      return p_out
 
 #-----------------------------------------------------------------------
 
 def extract_wtsum_col(spatialdat,mu,apmin,apmax,weight='gauss',sig=1.0,
-                      gain=1.0,rdnoise=0.0,sky=None):
+                      gain=1.0,rdnoise=0.0,sky=None, weighted_var=True,var_in=None,bkgd=None,amp0=None):
    """
    Extracts the spectrum from one row/column in the wavelength direction
    via a weighted sum.  The choices for the weighting are:
@@ -447,56 +629,228 @@ def extract_wtsum_col(spatialdat,mu,apmin,apmax,weight='gauss',sig=1.0,
      sky        - sky value for this wavelength (default=None).  Used only
                   if the spectrum passed to this function has already been
                   background-subtracted.
+     weighted_var - If true, the variance is calculated using the same weighting
+                  scheme as for spatialdat
+     var_in     - If using weighted_var, an input variance of the same 
+                  dimensions as spatialdat must be input here.
    """
 
    """ Define aperture and background regions """
    #apstart = int(mu-apsize/2.0)
    #apend   = apstart+apsize+1
-   apstart = int(mu+apmin)
-   apend   = int(mu+apmax+1.)
-   apmask = numpy.zeros(spatialdat.shape,dtype=bool)
-   apmask[apstart:apend] = True
-   bkgdmask = numpy.logical_not(apmask)
-
-   """ Estimate the background """
-   bkgd = numpy.median(spatialdat[bkgdmask],axis=None)
+   if np.shape(mu) == ():
+      apstart = int(mu+apmin)
+      apend   = int(mu+apmax+1.)
+      apmask = numpy.zeros(spatialdat.shape,dtype=bool)
+      apmask[apstart:apend] = True
+      bkgdmask = numpy.logical_not(apmask)
+      """ Estimate the background """
+      if bkgd == None: bkgd = numpy.median(spatialdat[bkgdmask],axis=None)
    #print "Background level is %7.2f" % bkgd
 
-   """ Make the weight array """
-   y = numpy.arange(spatialdat.shape[0])
-   if(weight == 'uniform'):
-      gweight = numpy.zeros(y.size)
-      gweight[apmask] = 1.0
+      """ Make the weight array """
+      y = numpy.arange(spatialdat.shape[0])
+      if(weight == 'uniform'):
+         gweight = numpy.zeros(y.size)
+         gweight[apmask] = 1.0
+      else:
+         gweight = make_gauss_plus_bkgd(y,mu,sig,1.0,0.0)
+
+         """ Do the weighted sum """
+      wtsum = ((spatialdat - bkgd)*gweight)[apmask].sum() / gweight[apmask].sum()
+
+      """ Calculate the variance """
+      if weighted_var:
+         var = (var_in*(gweight)**2)[apmask].sum() / (gweight[apmask].sum())**2
+      elif (sky == None):
+         varspec = (gain * spatialdat + rdnoise**2)/gain**2
+         var = (varspec * gweight)[apmask].sum() / gweight[apmask].sum()
+      else:
+         varspec = (gain * (spatialdat + sky) + rdnoise**2)/gain**2
+         var = (varspec * gweight)[apmask].sum() / gweight[apmask].sum()
    else:
-      gweight = make_gauss_plus_bkgd(y,mu,sig,1.0,0.0)
+      wtsum,var = np.zeros(len(mu)),np.zeros(len(mu))
+      for iex in range(0,len(mu)):
+         apstart = int(mu[iex]+apmin)
+         apend   = int(mu[iex]+apmax+1.)
+         apmask = numpy.zeros(spatialdat.shape,dtype=bool)
+         apmask[apstart:apend] = True
+         bkgdmask = numpy.logical_not(apmask)
+         """ Estimate the background """
+         if bkgd == None: bkgd = numpy.median(spatialdat[bkgdmask],axis=None)
 
-   """ Do the weighted sum """
-   wtsum = ((spatialdat - bkgd)*gweight)[apmask].sum() / gweight[apmask].sum()
+         """ Make the weight array """
+         y = numpy.arange(spatialdat.shape[0])
+         if(weight == 'uniform'):
+            gweight = numpy.zeros(y.size)
+            gweight[apmask] = 1.0
+         else:
+            gweight = make_gauss_plus_bkgd(y,mu[iex],sig[iex],1.0,0.0)
 
-   """ Calculate the variance """
-   if (sky == None):
-      varspec = (gain * spatialdat + rdnoise**2)/gain**2
-      var = (varspec * gweight)[apmask].sum() / gweight[apmask].sum()
-   else:
-      varspec = (gain * (spatialdat + sky) + rdnoise**2)/gain**2
-      var = (varspec * gweight)[apmask].sum() / gweight[apmask].sum()
+         """ Do the weighted sum """
+         wtsum[iex] = ((spatialdat - bkgd)*gweight)[apmask].sum() / gweight[apmask].sum()
+         if amp0 != None:
+            gamp = np.arange(len(mu))[np.arange(len(mu)) != iex]
+            wtsum[iex] -= np.sum((np.transpose(np.array([amp0[gamp]]))*np.exp(-0.5*(np.arange(1,len(spatialdat)+1)[apmask]-np.transpose(np.array([mu[gamp]])))**2/np.transpose(np.array([sig]))))*gweight[apmask])/gweight[apmask].sum()
+            #if gweight[apmask].sum() == 0: 
+               #print 'gweight sum is zero: Point A'
+               #print gweight[apmask],mu[iex],sig[iex]
 
+         """ Calculate the variance """
+         if weighted_var:
+            var[iex] = (var_in*(gweight)**2)[apmask].sum() / (gweight[apmask].sum())**2
+            #if amp0 != None:
+               #print "Variance calculated without accounting for subtraction of multiple gaussians"
+            #if gweight[apmask].sum() == 0: print 'gweight sum is zero: Point B'
+         elif (sky == None):
+            varspec = (gain * spatialdat + rdnoise**2)/gain**2
+            var[iex] = (varspec * gweight)[apmask].sum() / gweight[apmask].sum()
+         else:
+            varspec = (gain * (spatialdat + sky) + rdnoise**2)/gain**2
+            var[iex] = (varspec * gweight)[apmask].sum() / gweight[apmask].sum()
+      
    return wtsum, var
 
 #-----------------------------------------------------------------------
 
+def plot_multiple_peaks(cdat,tp,theight,apmin=-4.,apmax=4.,maxpeaks=2,fig=4,clearfig=True):
+   plt.figure(fig)
+   if clearfig: plt.clf()
+   plt.plot(np.arange(1,theight+1),cdat,linestyle='steps',color='black')
+   xmod = numpy.arange(1,theight+1,0.1)
+   tcolors = np.array(['red','cyan','magenta','green'])
+   for ipg in range(0,maxpeaks):
+      ymod = make_gauss_plus_bkgd(xmod,tp[ipg][1],tp[ipg][2],tp[ipg][3],tp[0][0])
+      plt.plot(xmod,ymod,color=tcolors[ipg])
+      plt.axvline(tp[ipg][1]+apmin,color=tcolors[ipg])
+      plt.axvline(tp[ipg][1]+apmax,color=tcolors[ipg])
+      plt.text(tp[ipg][1],tp[ipg][3]*1.05,str(ipg+1),color=tcolors[ipg])
+   plt.xlabel('Pixel number in the spatial direction')
+   plt.title('Compressed Spatial Plot with Potential Peaks')
+
+#-----------------------------------------------------------------------
+
+def find_multiple_peaks(data,dispaxis="x",apmin=-4.,apmax=4.,maxpeaks=2):
+   tdata = data.copy()
+   gfbc = find_blank_columns(tdata)
+   if dispaxis == 'x':
+      data[:,gfbc]
+   tp = np.zeros((maxpeaks,4,))
+   p_prelim = find_peak(tdata,dispaxis=dispaxis,apmin=apmin,apmax=apmax,showplot=False,do_subplot=False,nofit=True)
+   tp[0] = p_prelim
+   for ifmp in range(1,maxpeaks):
+      if dispaxis == 'x':
+         theight = np.shape(tdata[:,gfbc])[0]
+         tlength = np.shape(tdata[:,gfbc])[1]
+         if ifmp == 1: x = np.arange(1,theight+1)
+         gx = np.where((x < p_prelim[1]+2*apmin) | (x > p_prelim[1]+2*apmax))[0]
+         if ifmp != 1: gx = np.intersect1d(gx,gxprev)
+         p_prelim = find_peak(tdata[gx,:],dispaxis=dispaxis,apmin=apmin,apmax=apmax,showplot=False,do_subplot=False,nofit=True)
+         tp[ifmp] = p_prelim
+         tp[ifmp][1] = x[gx[int(tp[ifmp][1])-1]]
+         gxprev = gx
+      else:
+         tlength = np.shape(tdata[gfbc,:])[0]
+         theight = np.shape(tdata[gfbc,:])[1]
+         if ifmp == 1: x = np.arange(1,theight+1)
+         gx = np.where((x < p_prelim[1]+2*apmin) | (x > p_prelim[1]+2*apmax))[0]
+         if ifmp != 1: gx = np.intersect1d(gx,gxprev)
+         p_prelim = find_peak(tdata[:,gxprev],dispaxis=dispaxis,apmin=apmin,apmax=apmax,showplot=False,do_subplot=False,nofit=True)
+         tp[ifmp] = p_prelim
+         tp[ifmp][1] = x[gx[int(tp[ifmp][1])-1]]
+         gxprev = gx
+   tp = find_peak(tdata,dispaxis=dispaxis,apmin=apmin,apmax=apmax,showplot=False,do_subplot=False,mu0=tp[:,1])
+   tp[0] = np.ones(len(tp[1]))*tp[0]
+   tp = np.transpose(tp)
+   if dispaxis == 'x':
+      cdat = numpy.median(data[:,gfbc],axis=1)
+   else:
+      cdat = numpy.median(data[gfbc,:],axis=0)
+   plot_multiple_peaks(cdat,tp,theight,apmin=apmin,apmax=apmax,maxpeaks=maxpeaks)
+   print 'Plotting %i highest peaks found\n'%maxpeaks
+   tflag,fitmp,fixmu = False,False,False
+   while not tflag:
+      inp_fitmp = raw_input('Reduce secondary peaks? (y/n)\n')
+      if ((inp_fitmp == 'y') | (inp_fitmp == 'Y')):
+         tflag,fitmp = True,True
+      elif ((inp_fitmp == 'n') | (inp_fitmp == 'N')):
+         tflag = True
+      elif inp_fitmp == 'fixmu':
+         tflag,fixmu = True,True
+      else:
+         print 'Invalid input\n'
+   fitpeaks = np.zeros(maxpeaks,dtype='bool')
+   fitpeaks[0] = True
+   if fitmp:
+      for iwp in range(1,maxpeaks):
+         tflag = False
+         while not tflag:
+            inp_whichp = raw_input("Reduce peak %i? (y/n/manual) Enter 'manual' to manually set peak position\n"%(iwp+1))
+            if ((inp_whichp == 'y') | (inp_whichp == 'Y')):
+               tflag,fitpeaks[iwp] = True,True
+            elif((inp_whichp == 'n') | (inp_whichp == 'N')):
+               tflag = True
+            elif inp_whichp == 'manual':
+               mflag = False
+               while not mflag:
+                  inp_newp = raw_input("Current mu for peak %i is %f. Is this acceptable? Enter 'y' or new value for mu.\n"%(iwp+1,tp[iwp][1]))
+                  if ((inp_newp == 'y') | (inp_newp == 'Y')):
+                     mflag = True
+                     tflag,fitpeaks[iwp] = True,True
+                  else:
+                     try:
+                        tp[iwp][1] = float(inp_newp)
+                        plot_multiple_peaks(cdat,tp,theight,apmin=apmin,apmax=apmax,maxpeaks=maxpeaks)
+                     except ValueError:
+                        print 'Invalid input\n'
+            else:
+               print 'Invalid input\n'
+   if ((fitpeaks[0]) & (len(fitpeaks[fitpeaks]) == 1)): 
+      fitmp = False
+      print 'No secondary peaks selected. Reverting to normal analysis.'
+   num_peaks = len(fitpeaks[fitpeaks])
+   mp_out = np.zeros((4,num_peaks))
+   for impo in range(0,maxpeaks): 
+      if fitpeaks[impo]: 
+         inow = len(fitpeaks[0:impo+1][fitpeaks[0:impo+1]])
+         mp_out[:,inow-1] = tp[inow-1]
+   if num_peaks == 1:
+      return False,fixmu,tp[0]
+   else:
+      return fitmp,fixmu,mp_out
+
+#-----------------------------------------------------------------------
+
 def find_trace(data,dispaxis="x",apmin=-4.,apmax=4.,do_plot=True,
-               do_subplot=False):
+               do_subplot=False,findmultiplepeaks=False,get_bkgd=False,get_amp=False):
    """
    First step in the reduction process.  
    Runs find_peak on the full 2d spectrum in order to set the initial 
     guess for trace_spectrum.
    """
-   p = find_peak(data,dispaxis=dispaxis,apmin=apmin,apmax=apmax,
-                 showplot=do_plot,do_subplot=do_subplot)
+   fitmp,fixmu = False,False
+   if findmultiplepeaks:
+      fitmp,fixmu,mp_vars = find_multiple_peaks(data)
+   if fitmp:
+      p = find_peak(data,dispaxis=dispaxis,apmin=apmin,apmax=apmax,showplot=do_plot,do_subplot=do_subplot,mu0=mp_vars[1],sig0=mp_vars[2])
+   elif fixmu:
+      p = find_peak(data,dispaxis=dispaxis,apmin=apmin,apmax=apmax,showplot=do_plot,do_subplot=do_subplot,mu0=mp_vars[1],sig0=mp_vars[2],fixmu=True)
+   else:
+      p = find_peak(data,dispaxis=dispaxis,apmin=apmin,apmax=apmax,showplot=do_plot,do_subplot=do_subplot)
    mu0  = p[1]
    sig0 = p[2]
-   return mu0,sig0
+   bkgd = p[0]
+   amp0 = p[3]
+   if np.shape(bkgd) != (): bkgd = np.sum(p[0])
+   if get_bkgd:
+      if get_amp:
+         return mu0,sig0,amp0,bkgd
+      else:
+         return mu0,sig0,bkgd
+   elif get_amp:
+      return mu0,sig0,amp0
+   else:
+      return mu0,sig0
 
 #-----------------------------------------------------------------------
 
@@ -510,9 +864,14 @@ def fit_poly_to_trace(x, data, fitorder, data0, x_max, fitrange=None,
    else:
       fitmask = numpy.logical_and(x>=fitrange[0],x<fitrange[1])
       tmpfitdat = data[fitmask]
-   dmu,dsig = c.sigma_clip(tmpfitdat,3.0)
-   goodmask = numpy.absolute(data - dmu)<3.0*dsig
-   badmask  = numpy.absolute(data - dmu)>=3.0*dsig
+   if len(tmpfitdat[tmpfitdat != tmpfitdat[0]]) == 0:
+      dmu,dsig = tmpfitdat[0],3.
+      goodmask = np.arange(len(tmpfitdat))
+      badmask = np.where(tmpfitdat != tmpfitdat[0])[0]
+   else:
+      dmu,dsig = c.sigma_clip(tmpfitdat,3.0)
+      goodmask = numpy.absolute(data - dmu)<3.0*dsig
+      badmask  = numpy.absolute(data - dmu)>=3.0*dsig
    dgood    = data[goodmask]
    dbad     = data[badmask]
    xgood    = x[goodmask]
@@ -570,7 +929,7 @@ def fit_poly_to_trace(x, data, fitorder, data0, x_max, fitrange=None,
 #-----------------------------------------------------------------------
 
 def trace_spectrum(data,mu0,sig0,dispaxis="x",stepsize=25,muorder=3,
-   sigorder=4,fitrange=None,do_plot=True,do_subplot=False):
+   sigorder=4,fitrange=None,do_plot=True,do_subplot=False,noblankcolumns=True):
    """
    Second step in the reduction process.
    Fits a gaussian plus background to portions of the spectrum separated
@@ -584,17 +943,30 @@ def trace_spectrum(data,mu0,sig0,dispaxis="x",stepsize=25,muorder=3,
    else:
       specaxis  = 1
       spaceaxis = 0
-   xlength   = data.shape[specaxis]
+   if noblankcolumns:
+      gfbc_all = find_blank_columns(data,output_dims=2)
+      gfbc_rows = find_blank_columns(data)
+   else:
+      gfbc_rows = np.arange(np.shape(data)[specaxis])
+      gfbc_all = np.where(data > np.min(data)-2.)
+   xlength_fbc = len(gfbc_rows)
+   #xlength_fbc   = data[gfbc_].shape[specaxis]
+   xlength_tot   = data.shape[specaxis]
 
    # Define the slices through the 2D spectrum that will be used to find
    #  the centroid and width of the object spectrum as it is traced down 
    #  the chip
-   xstep = numpy.arange(0,xlength-stepsize,stepsize)
+   xstep_all = gfbc_rows[numpy.arange(0,xlength_fbc-stepsize,stepsize)]
+   xstep_fbc = numpy.arange(0,xlength_fbc-stepsize,stepsize)
 
    # Set up containers for mu and sigma along the trace
-   mu = 0.0 * xstep
-   sigma = 0.0 * xstep
-   nsteps = numpy.arange(xstep.shape[0])
+   if np.shape(mu0) != ():
+      mu = np.zeros(((len(xstep_all)),len(mu0)))
+      sigma = np.zeros(((len(xstep_all)),len(mu0)))
+   else:
+      mu = np.zeros(len(xstep_all))
+      sigma = np.zeros(len(xstep_all))
+   nsteps = numpy.arange(xstep_all.shape[0])
 
    # Step through the data
    print ""
@@ -605,10 +977,13 @@ def trace_spectrum(data,mu0,sig0,dispaxis="x",stepsize=25,muorder=3,
    print"   the 2D spectrum..."
    for i in nsteps:
       if(specaxis == 0):
-         tmpdata = data[xstep[i]:xstep[i]+stepsize,:]
+         tmpdata = data[gfbc_rows,:][xstep_fbc[i]:xstep_fbc[i]+stepsize,:]
       else:
-         tmpdata = data[:,xstep[i]:xstep[i]+stepsize]
-      ptmp = find_peak(tmpdata,dispaxis=dispaxis,showplot=False,verbose=False)
+         tmpdata = data[:,gfbc_rows][:,xstep_fbc[i]:xstep_fbc[i]+stepsize]
+      if np.shape(mu0) != ():
+         ptmp = find_peak(tmpdata,dispaxis=dispaxis,showplot=False,verbose=False,mu0=mu0,sig0=sig0)
+      else:
+         ptmp = find_peak(tmpdata,dispaxis=dispaxis,showplot=False,verbose=False)
       mu[i]    = ptmp[1]
       sigma[i] = ptmp[2]
    print "   Done"
@@ -622,20 +997,43 @@ def trace_spectrum(data,mu0,sig0,dispaxis="x",stepsize=25,muorder=3,
          plt.clf()
    print "Fitting a polynomial of order %d to the location of the trace" \
        % muorder
-   mupoly = fit_poly_to_trace(xstep,mu,muorder,mu0,xlength,fitrange,
-                              do_plot=do_plot)
-
+   if np.shape(mu0) == ():
+      mupoly = fit_poly_to_trace(xstep_all,mu,muorder,mu0,xlength_tot,fitrange,do_plot=do_plot)
+   else:
+      plots_arr = np.array([2,5,7,9])
+      mupolytmp = fit_poly_to_trace(xstep_all,mu[:,0],muorder,mu0[0],xlength_tot,fitrange,do_plot=do_plot)
+      mupoly = np.zeros((len(mu0),len(mupolytmp)))
+      mupoly[0] = mupolytmp
+      for impt in range(1,len(mu0)):
+         if do_plot:
+            if do_subplot:
+               plt.figure(plots_arr[impt])
+               plt.clf()
+               plt.subplot(222)
+         mupoly[impt] = fit_poly_to_trace(xstep_all,mu[:,impt],muorder,mu0[impt],xlength_tot,fitrange,do_plot=do_plot)
+      mupoly = np.transpose(mupoly)
    # Fit a polynomial to the width of the trace
    if(do_subplot):
+      plt.figure(2)
       plt.subplot(223)
    else:
       plt.figure(3)
       plt.clf()
    print "Fitting a polynomial of order %d to the width of the trace" % sigorder
-   sigpoly = fit_poly_to_trace(xstep,sigma,sigorder,sig0,xlength,fitrange,
-                               markformat='go',title='Width of Peak',
-                               ylabel='Width of trace (Gaussian sigma)',
-                               do_plot=do_plot)
+   if np.shape(mu0) == ():
+      sigpoly = fit_poly_to_trace(xstep_all,sigma,sigorder,sig0,xlength_tot,fitrange,markformat='go',title='Width of Peak',ylabel='Width of trace (Gaussian sigma)',do_plot=do_plot)
+   else:
+      plots_arr = np.array([2,5,7,9])
+      sigpolytmp = fit_poly_to_trace(xstep_all,sigma[:,0],sigorder,sig0[0],xlength_tot,fitrange,markformat='go',title='Width of Peak',ylabel='Width of trace (Gaussian sigma)',do_plot=do_plot)
+      sigpoly = np.zeros((len(mu0),len(mupolytmp)))
+      sigpoly[0] = sigpolytmp
+      for ispt in range(1,len(mu0)):
+         if do_plot:
+            if do_subplot:
+               plt.figure(plots_arr[ispt])
+               plt.subplot(223)
+         sigpoly[ispt] = fit_poly_to_trace(xstep_all,sigma[:,ispt],sigorder,sig0[ispt],xlength_tot,fitrange,markformat='go',title='Width of Peak',ylabel='Width of trace (Gaussian sigma)',do_plot=do_plot)
+      sigpoly = np.transpose(sigpoly)
 
    # Return the fitted parameters
    return mupoly,sigpoly
@@ -644,7 +1042,7 @@ def trace_spectrum(data,mu0,sig0,dispaxis="x",stepsize=25,muorder=3,
 
 def extract_spectrum(data,mupoly,sigpoly,dispaxis="x",apmin=-4.,apmax=4.,
                      weight='gauss', sky=None, gain=1.0, rdnoise=0.0, 
-                     do_plot=True, do_subplot=False, outfile=None):
+                     do_plot=True, do_subplot=False, outfile=None, weighted_var=True,var_in=None,bkgd=None,amp0=None):
    """
    Third step in reduction process.
    This function extracts a 1D spectrum from the input 2D spectrum (data)
@@ -668,47 +1066,70 @@ def extract_spectrum(data,mupoly,sigpoly,dispaxis="x",apmin=-4.,apmax=4.,
    #  spectrum, using the input polynomials
 
    fitx = numpy.arange(data.shape[specaxis]).astype(numpy.float32)
-   mu = 0.0 * fitx
-   for i in range(mupoly.size):
-      mu += mupoly[i] * fitx**(mupoly.size - 1 - i)
-   sig = 0.0 * fitx
-   for i in range(sigpoly.size):
-      sig += sigpoly[i] * fitx**(sigpoly.size - 1 - i)
+   if np.shape(mupoly[0]) == ():
+      mu = 0.0 * fitx
+      for i in range(mupoly.size):
+         mu += mupoly[i] * fitx**(mupoly.size - 1 - i)
+      sig = 0.0 * fitx
+      for i in range(sigpoly.size):
+         sig += sigpoly[i] * fitx**(sigpoly.size - 1 - i)
+   else:
+      mu = np.zeros((len(mupoly[0]),len(fitx)))
+      for i in range(len(mupoly[0])):
+         mu += np.transpose(np.array([mupoly[i]])) * fitx**(len(mupoly[0])- 1 - i)
+      sig = np.zeros((len(mupoly[0]),len(fitx)))
+      for i in range(len(mupoly[0])):
+         sig += np.transpose(np.array([sigpoly[i]])) * fitx**(len(mupoly[0]) - 1 - i)
+      mu,sig = np.transpose(mu),np.transpose(sig)
+      
 
    # Set up the containers for the amplitude and variance of the spectrum
    #  along the trace
    amp = 0.0 * pix
    var = 0.0 * pix
-
+   if np.shape(mupoly[0]) != ():
+      amp,var = np.zeros((len(pix),len(mupoly[0]))),np.zeros((len(pix),len(mupoly[0])))
    # Step through the data
    print ""
    print "Extracting the spectrum..."
+   if not weighted_var: tmpvar = None
    for i in pix:
       #print pix[i], mu[i], sig[i]
       if specaxis == 0:
          tmpdata = data[i,:]
+         if weighted_var: tmpvar = var_in[i,:]
       else:
          tmpdata = data[:,i]
-      if (sky == None):
+         if weighted_var: tmpvar = var_in[:,i]
+      if ((sky == None) | weighted_var):
          skyval = None
       else:
          skyval = sky[i]
-      amp[i],var[i] = extract_wtsum_col(tmpdata,mu[i],apmin,apmax,sig=sig[i],
-                                        gain=gain,rdnoise=rdnoise,sky=skyval,
-                                        weight=weight)
+      #print tmpdata,mu[i],apmin,apmax,sig[i],gain,rdnoise,skyval,weight,tmpvar,bkgd,amp0
+      amp[i],var[i] = extract_wtsum_col(tmpdata,mu[i],apmin,apmax,sig=sig[i],gain=gain,rdnoise=rdnoise,sky=skyval,weight=weight,weighted_var=True,var_in=tmpvar,bkgd=bkgd,amp0=amp0)
    print "   Done"
 
    # Plot the extracted spectrum
    if do_plot:
       print ""
       print "Plotting the spectrum"
-      if(do_subplot):
-         plt.subplot(224)
+      if np.shape(mupoly[0]) == ():
+         if(do_subplot):
+            plt.subplot(224)
+         else:
+            plt.figure(4)
+            plt.clf()
+         plot_spectrum_array(pix,amp,title='Extracted spectrum (pixels)',xlabel='Pixel number in the dispersion direction')
       else:
-         plt.figure(4)
-         plt.clf()
-      plot_spectrum_array(pix,amp,title='Extracted spectrum (pixels)',
-                          xlabel='Pixel number in the dispersion direction')
+         plots_arr = np.array([2,5,7,9])
+         for ipex in range(0,len(mupoly[0])):
+            if(do_subplot):
+               plt.figure(plots_arr[ipex])
+               plt.subplot(224)
+            else:
+               plt.figure(4)
+               plt.clf()
+            plot_spectrum_array(pix,amp[:,ipex],title='Extracted spectrum (pixels)',xlabel='Pixel number in the dispersion direction')
 
    # Save the extracted spectrum
    if outfile is not None:
@@ -731,9 +1152,15 @@ def resample_spec(w, spec, owave=None):
       w0 = w[0]
       w1 = w[-1]
       owave = numpy.linspace(w0,w1,w.size)
-
-   specmod = interpolate.splrep(w,spec)
-   outspec = interpolate.splev(owave,specmod)
+   
+   if np.shape(spec[0]) == ():
+      specmod = interpolate.splrep(w,spec)
+      outspec = interpolate.splev(owave,specmod)
+   else:
+      outspec = np.zeros(np.shape(spec))
+      for ios in range(0,len(spec[0])):
+         specmod = interpolate.splrep(w,spec[:,ios])
+         outspec[:,ios] = interpolate.splev(owave,specmod)
 
    return owave,outspec
 
@@ -1217,29 +1644,142 @@ def mark_spec_emission(z, w=None, f=None, labww=20., labfs=12, ticklen=0.):
       '[NII]','H-alpha',
       '[NII]','[SII]','','Pa-gamma','Pa-beta','Pa-alpha']
 
-   lineinfo = n.array([
-      ("Ly-alpha",  1216.,   r"Ly $\alpha$",1,True),
-      ("C IV",      1549.,   "C IV",        1,True),
-      ("C III]",    1909.,   "C III]",      1,True),
-      ("Mg II",     2800.,   "Mg II",       1,True),
-      ("[O II]",    3726.03, "[O II]",      1,True),
-      ("[O II]",    3728.82, "[O II]",      1,False),
-      ("H-beta",    4861.33, r"H$\beta",    1,True),
-      ("[O III]",   4962.,   "[O III]",     1,False),
-      ("[O III]",   5007.,   "[O III]",     1,True),
-      #("[N I]",     5199.,   "[N I]",       1,False),
-      ("[O I]",     6300.,   "[O I]",       1,True),
-      ("[N II]",    6548.,   "[N II]",      1,True),
-      ("H-alpha",   6562.8,  r"H$\alpha$",  1,True),
-      ("[N II]",    6583.5,  "[N II]",      1,True),
-      ("[S II]",    6716.4,  "[S II]",      1,False),
-      ("[S II]",    6730.8,  "[S II]",      1,True),
-      ("Pa-gamma", 10900.,   r"Pa $\gamma$",1,True),
-      ("Pa-beta",  12800.,   r"Pa $\beta$", 1,True),
-      ("Pa-alpha", 18700.,   r"Pa $\alpha$",1,True)
-      ],
-      dtype=[('name','S10'),('wavelength',float),('label','S10'),
-             ('dir',int),('plot',bool)]
+   lineinfo = n.array([\
+      ("Ly-alpha",  1216.,   r"Ly $\alpha$",1,True),\
+      ("C IV",      1549.,   "C IV",        1,True),\
+      ("C III]",    1909.,   "C III]",      1,True),\
+      ("Mg II",     2800.,   "Mg II",       1,True),\
+      ("[O II]",    3726.03, "[O II]",      1,True),\
+      ("[O II]",    3728.82, "[O II]",      1,False),\
+      ("H-beta",    4861.33, r"H$\beta$",    1,True),\
+      ("[O III]",   4962.,   "[O III]",     1,False),\
+      ("[O III]",   5007.,   "[O III]",     1,True),\
+      #("[N I]",     5199.,   "[N I]",       1,False),\
+      ("[O I]",     6300.,   "[O I]",       1,True),\
+      ("[N II]",    6548.,   "[N II]",      1,True),\
+      ("H-alpha",   6562.8,  r"H$\alpha$",  1,True),\
+      ("[N II]",    6583.5,  "[N II]",      1,True),\
+      ("[S II]",    6716.4,  "[S II]",      1,False),\
+      ("[S II]",    6730.8,  "[S II]",      1,True),\
+      ("Pa-gamma", 10900.,   r"Pa $\gamma$",1,True),\
+      ("Pa-beta",  12800.,   r"Pa $\beta$", 1,True),\
+      ("Pa-alpha", 18700.,   r"Pa $\alpha$",1,True)\
+      ],\
+      dtype=[('name','S10'),('wavelength',float),('label','S10'),\
+             ('dir',int),('plot',bool)]\
+      )
+   #print lineinfo
+
+
+   """ Get current display limits """
+   if w is None:
+      lammin, lammax = plt.xlim()
+   else:
+      if f is None:
+         print ""
+         print "ERROR: mark_spec_emission. w is set but f isn't."
+         print "Changing to default marking style"
+         print ""
+         w = None
+      else:
+         lammin,lammax = w.min(),w.max()
+         if plt.xlim()[0] > lammin: lammin = plt.xlim()[0]
+         if plt.xlim()[1] < lammax: lammax = plt.xlim()[1]
+         dlam = w[1] - w[0]
+         ff = f[(w>=plt.xlim()[0]) & (w<=plt.xlim()[1])]
+         fluxdiff = ff.max() - ff.min()
+         dlocwin = labww / 2.
+         #if ticklen == 0.:
+            #ticklen = 0.1 * fluxdiff
+
+
+   """ Only mark lines within current display range """
+   zlines = (z+1.0) * lineinfo['wavelength']
+   print ""
+   print "Line      lambda_obs"
+   print "--------  -----------"
+   for i in range(len(lineinfo)):
+      print "%-9s %8.2f" % (lineinfo['name'][i],zlines[i])
+   mask = numpy.logical_and(zlines>lammin,zlines<lammax)
+   tmplines = lineinfo[mask]
+   if (len(tmplines) > 0):
+      tmpfmax,xarr = np.zeros(0),np.zeros(0)
+      for i in tmplines:
+         x = i['wavelength']*(z+1.0)
+         xarr = np.append(xarr,x)
+         if w is not None and f is not None:
+            tmpmask = numpy.where((w>=x-dlocwin*dlam) &(w<=x+dlocwin*dlam))
+            tmpfmax = np.append(tmpfmax,f[tmpmask].max())
+      #tickstarts = tmpfmax - 0.25*(tmpfmax-plt.ylim()[1]) 
+      #labstarts  = tmpfmax - 0.4*(tmpfmax-plt.ylim()[1])
+      tmpticklens = -0.25*(tmpfmax-plt.ylim()[1])
+      if ticklen == 0.:
+         tmpticklen = np.max([np.min([(plt.ylim()[1]-plt.ylim()[0])/30.,np.min([tmpticklens[tmpticklens > 0]])]),(plt.ylim()[1]-plt.ylim()[0])/40.])
+      else:
+         tmpticklen = ticklen
+      for i in range(0,len(tmplines)):
+         if w is not None and f is not None:
+            #tickstart = tmpfmax + 0.05 * fluxdiff
+            #labstart  = tickstart + 1.3 * ticklen
+            #if tmpfmax[i] < plt.ylim()[1]-(plt.ylim()[1]-plt.ylim()[0])/15.:
+            tickstart = tmpfmax[i]+0.5*tmpticklen
+            labstart = tmpfmax[i]+2*tmpticklen
+            if plt.ylim()[1]-tmpfmax[i] > 3*tmpticklen:
+               plt.plot([xarr[i],xarr[i]],[tickstart,tickstart+tmpticklen],'k')
+               if tmplines[i]['plot']:
+                  plt.text(xarr[i],labstart,tmplines[i]['label'],color='k',rotation='vertical',ha='center',va='bottom',fontsize=labfs)
+            elif tmpfmax[i] < plt.ylim()[1]:
+               plt.axvline(xarr[i],linestyle='--',color='k',lw=1)
+               #print i['label'],tickstart,labstart,tmpticklen,tmpfmax[i]
+         else:
+            plt.axvline(xarr[i],linestyle='--',color='k',lw=1)
+
+
+
+#-----------------------------------------------------------------------
+
+def mark_spec_absorption(z, w=None, f=None, labww=20., labfs=12, ticklen=0.):
+   """
+   Marks the location of expected absorption lines in a spectrum, given
+    a redshift (z).  The default behavior is just to mark the lines with
+    a vertical dashed line from the top to the bottom of the plot.  
+    However, if the wavelength (w) and flux (f) vectors are passed to
+    the function, then the lines are marked with short vertical tick marks.
+
+   Inputs:
+      z       - redshift to be marked
+      w       - [OPTIONAL] wavelength array. Only used if short-tick line 
+                marker style is desired.
+      f       - [OPTIONAL] flux array. Only used if short-tick line marker
+                style is desired.
+      labww   - width in pixels of the window used to set the vertical
+                location of the tickmark (location is set from the minimum
+                value within the window).
+      labfs   - font size for labels, in points
+      ticklen - override of auto-determination of tick length if > 0
+   """
+
+   linelist = numpy.array([
+         3883,3933.667,3968.472,4101,4305,4340,4383,4455,4531,4861,5176,5893])
+   linename = [
+      "CN bandhead","CaII K","CaII H","H-delta","G-band","H-gamma","Fe4383","Ca4455","Fe4531","H-beta","Mg I (b)","Na I (D)"]
+
+   lineinfo = n.array([\
+       ("CN bandhead",   3883,       "CN red",1,True),\
+       ("CaII K",        3933.667,   "CaII K",1,True),\
+       ("CaII H",        3968.472,   "CaII H",1,True),\
+       ("H-delta",       4101,       r"H$\delta$",1,True),\
+       ("G-band",        4305,       "G-band",1,True),\
+       ("H-gamma",       4340,       r"H$\gamma$",1,True),\
+       ("Fe4383",        4383,       "Fe4383",1,True),\
+       ("Ca4455",        4455,       "Ca4455",1,True),\
+       ("Fe4531",        4531,       "Fe4531",1,True),\
+       ("H-beta",        4861,       r"H$\beta$",1,True),\
+       ("Mg I (b)",      5176,       "Mg b",1,True),\
+       ("Na I (D)",      5893,       "Na D",1,True)\
+      ],\
+      dtype=[('name','S10'),('wavelength',float),('label','S10'),\
+             ('dir',int),('plot',bool)]\
       )
    #print lineinfo
 
@@ -1254,13 +1794,15 @@ def mark_spec_emission(z, w=None, f=None, labww=20., labfs=12, ticklen=0.):
          print ""
          w = None
       else:
-         lammin = w.min()
-         lammax = w.max()
+         lammin,lammax = w.min(),w.max()
+         if plt.xlim()[0] > lammin: lammin = plt.xlim()[0]
+         if plt.xlim()[1] < lammax: lammax = plt.xlim()[1]
          dlam = w[1] - w[0]
-         fluxdiff = f.max() - f.min()
+         ff = f[(w>=plt.xlim()[0]) & (w<=plt.xlim()[1])]
+         fluxdiff = ff.max() - ff.min()
          dlocwin = labww / 2.
-         if ticklen == 0.:
-            ticklen = 0.1 * fluxdiff
+         #if ticklen == 0.:
+            #ticklen = 0.1 * fluxdiff
 
 
    """ Only mark lines within current display range """
@@ -1273,23 +1815,38 @@ def mark_spec_emission(z, w=None, f=None, labww=20., labfs=12, ticklen=0.):
    mask = numpy.logical_and(zlines>lammin,zlines<lammax)
    tmplines = lineinfo[mask]
    if (len(tmplines) > 0):
+      tmpfmin,xarr = np.zeros(0),np.zeros(0)
       for i in tmplines:
          x = i['wavelength']*(z+1.0)
+         xarr = np.append(xarr,x)
          if w is not None and f is not None:
             tmpmask = numpy.where((w>=x-dlocwin*dlam) &(w<=x+dlocwin*dlam))
-            tmpfmax = f[tmpmask].max()
-            tickstart = tmpfmax + 0.05 * fluxdiff
-            labstart  = tickstart + 1.3 * ticklen
-            plt.plot([x,x],[tickstart,tickstart+ticklen],'k')
-            if i['plot']:
-               plt.text(x,labstart,i['label'],color='k',
-                        rotation='vertical',ha='center',va='bottom',
-                        fontsize=labfs)
+            tmpfmin = np.append(tmpfmin,f[tmpmask].min())
+      #tickstart = tmpfmin - 0.2*(tmpfmin-plt.ylim()[0]) 
+      #labstart  = tmpfmin - 0.4*(tmpfmin-plt.ylim()[0])
+      tmpticklens = 0.25*(tmpfmin-plt.ylim()[0])
+      if ticklen == 0.: 
+         tmpticklen = np.max([np.min([(plt.ylim()[1]-plt.ylim()[0])/30.,np.min([tmpticklens[tmpticklens > 0]])]),(plt.ylim()[1]-plt.ylim()[0])/40.])
+      else:
+         tmpticklen = ticklen
+      for i in range(0,len(tmplines)):
+         if w is not None and f is not None:
+            tickstart = tmpfmin[i]-0.5*tmpticklen
+            labstart = tmpfmin[i]-2*tmpticklen
+            if tmpfmin[i]-plt.ylim()[0] > 3*tmpticklen:
+               plt.plot([xarr[i],xarr[i]],[tickstart-tmpticklen,tickstart],'k')
+               #print i['label'],tickstart,labstart,tmpticklen,tmpfmin
+               if tmplines[i]['plot']:
+                  plt.text(xarr[i],labstart,tmplines[i]['label'],color='k',rotation='vertical',ha='center',va='top',fontsize=labfs)
+            elif tmpfmin > plt.ylim()[0]:
+               plt.axvline(xarr[i],linestyle='--',color='k',lw=1)
+               #print i['label'],tickstart,labstart,tmpticklen,tmpfmin
          else:
-            plt.axvline(x,linestyle='--',color='k',lw=1)
+            plt.axvline(xarr[i],linestyle='--',color='k',lw=1)
 
 
 #-----------------------------------------------------------------------
+
 
 def plot_atm_trans(w, fwhm=15., flux=None, scale=1.05, offset=0.0,
                    color='g', linestyle='-', return_atm=False):
@@ -1341,7 +1898,7 @@ def plot_atm_trans(w, fwhm=15., flux=None, scale=1.05, offset=0.0,
 
 #-----------------------------------------------------------------------
 
-def smooth_boxcar(infile, filtwidth, outfile=None, varwt=True):
+def smooth_boxcar(infile, filtwidth, outfile=None, varwt=True, title='Smoothed Spectrum',line=1,hasvar=True,output=False):
    """
    Does a boxcar smooth of an input spectrum.  The default is to do
    inverse variance weighting, using the variance encoded in the third column
@@ -1353,30 +1910,44 @@ def smooth_boxcar(infile, filtwidth, outfile=None, varwt=True):
    """ Read the input spectrum """
    inspec = numpy.loadtxt(infile)
    wavelength = inspec[:,0]
-   influx = inspec[:,1]
-   if(varwt):
-      if(inspec.shape[1] < 3):
-         print ""
-         print "ERROR: Inverse variance weighting requested, but input file"
-         print "       has fewer than 3 columns (ncol = %d)" % inspec.shape[1]
-         return
+   if line == 1:
+      influx = inspec[:,1]
+      if(varwt):
+         if(inspec.shape[1] < 3):
+            print ""
+            print "ERROR: Inverse variance weighting requested, but input file"
+            print "       has fewer than 3 columns (ncol = %d)" % inspec.shape[1]
+            return
+         else:
+            wt = np.zeros(len(inspec[:,2]))
+            wt[inspec[:,2]!=0] = 1.0 / inspec[:,2][inspec[:,2]!=0]
       else:
-         wt = 1.0 / inspec[:,2]
+         wt = 0.0 * influx + 1.0
    else:
-      wt = 0.0 * influx + 1.0
+      if hasvar:
+         influx = inspec[:,2*line-1]
+         if varwt:
+            wt = np.zeros(len(inspec[:,2*line]))
+            wt[inspec[:,2*line]!=0] = 1.0 / inspec[:,2*line][inspec[:,2*line]!=0]
+      else:
+         influx = inspec[:,line]
 
    """ Smooth spectrum """
    yin = wt * influx
    outflux = ndimage.filters.uniform_filter(yin,filtwidth)
-   outflux /= ndimage.filters.uniform_filter(wt,filtwidth)
+   wt_tmp = wt.copy()
+   wt_tmp[wt == 0] = 0.00001*np.min(wt[wt!=0])
+   outflux /= ndimage.filters.uniform_filter(wt_tmp,filtwidth)
    if varwt:
-      outvar = 1.0 / (filtwidth * ndimage.filters.uniform_filter(wt,filtwidth))
+      outvar = (filtwidth * ndimage.filters.uniform_filter(wt,filtwidth))
+      outvar[(influx == 0) & (outflux < np.min(np.fabs(influx[influx!=0]))/filtwidth)] *= 0.
+      outvar[outvar!=0] = 1.0 / outvar[outvar!=0]
 
    """ Plot the smoothed spectrum """
    if varwt:
-      plot_spectrum_array(wavelength,outflux,outvar,title=None)
+      plot_spectrum_array(wavelength,outflux,outvar,title=title)
    else:
-      plot_spectrum_array(wavelength,outflux,title=None)
+      plot_spectrum_array(wavelength,outflux,title=title)
 
    """ Save the output file if desired """
    if(outfile):
@@ -1386,6 +1957,11 @@ def smooth_boxcar(infile, filtwidth, outfile=None, varwt=True):
       else:
          save_spectrum(outfile,wavelength,outflux)
       print ""
+   if output: 
+      if varwt:
+         return wavelength,outflux,outvar
+      else:
+         return wavelength,outflux
 
 #-----------------------------------------------------------------------
 
