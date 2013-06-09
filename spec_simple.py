@@ -718,13 +718,22 @@ def plot_multiple_peaks(cdat,tp,theight,apmin=-4.,apmax=4.,maxpeaks=2,fig=4,clea
    if clearfig: plt.clf()
    plt.plot(np.arange(1,theight+1),cdat,linestyle='steps',color='black')
    xmod = numpy.arange(1,theight+1,0.1)
-   tcolors = np.array(['red','cyan','magenta','green'])
+   tcolors = np.array(['red','cyan','magenta','green','blue','yellow'])
    for ipg in range(0,maxpeaks):
       ymod = make_gauss_plus_bkgd(xmod,tp[ipg][1],tp[ipg][2],tp[ipg][3],tp[0][0])
       plt.plot(xmod,ymod,color=tcolors[ipg])
       plt.axvline(tp[ipg][1]+apmin,color=tcolors[ipg])
       plt.axvline(tp[ipg][1]+apmax,color=tcolors[ipg])
-      plt.text(tp[ipg][1],tp[ipg][3]*1.05,str(ipg+1),color=tcolors[ipg])
+      if tp[ipg][3]*1.05 > 2*np.max(cdat):
+         plt.text(tp[ipg][1],1.8*np.max(cdat),str(ipg+1),color=tcolors[ipg])
+      elif ((tp[ipg][3]*1.05 < 2*np.min(cdat)) & (tp[ipg][3]*1.05 < -2*np.max(cdat))):
+         plt.text(tp[ipg][1],np.min([1.8*np.min(cdat),-1.8*np.max(cdat)]),str(ipg+1),color=tcolors[ipg])
+      else:
+         plt.text(tp[ipg][1],tp[ipg][3]*1.05,str(ipg+1),color=tcolors[ipg])
+   if plt.ylim()[1] > 2*np.max(cdat):
+      plt.ylim(plt.ylim()[0],2*np.max(cdat))
+   if ((plt.ylim()[0] < 2*np.min(cdat)) & (plt.ylim()[0] < -2*np.max(cdat))):
+      plt.ylim(np.min([2*np.min(cdat),-2*np.max(cdat)]),plt.ylim()[1])
    plt.xlabel('Pixel number in the spatial direction')
    plt.title('Compressed Spatial Plot with Potential Peaks')
 
@@ -1713,10 +1722,11 @@ def mark_spec_emission(z, w=None, f=None, labww=20., labfs=12, ticklen=0.):
       #tickstarts = tmpfmax - 0.25*(tmpfmax-plt.ylim()[1]) 
       #labstarts  = tmpfmax - 0.4*(tmpfmax-plt.ylim()[1])
       tmpticklens = -0.25*(tmpfmax-plt.ylim()[1])
-      if ticklen == 0.:
-         tmpticklen = np.max([np.min([(plt.ylim()[1]-plt.ylim()[0])/30.,np.min([tmpticklens[tmpticklens > 0]])]),(plt.ylim()[1]-plt.ylim()[0])/40.])
-      else:
-         tmpticklen = ticklen
+      if len(tmpticklens) > 0:
+         if ticklen == 0.:
+            tmpticklen = np.max([np.min([(plt.ylim()[1]-plt.ylim()[0])/30.,np.min([tmpticklens[tmpticklens > 0]])]),(plt.ylim()[1]-plt.ylim()[0])/40.])
+         else:
+            tmpticklen = ticklen
       for i in range(0,len(tmplines)):
          if w is not None and f is not None:
             #tickstart = tmpfmax + 0.05 * fluxdiff
@@ -1825,10 +1835,11 @@ def mark_spec_absorption(z, w=None, f=None, labww=20., labfs=12, ticklen=0.):
       #tickstart = tmpfmin - 0.2*(tmpfmin-plt.ylim()[0]) 
       #labstart  = tmpfmin - 0.4*(tmpfmin-plt.ylim()[0])
       tmpticklens = 0.25*(tmpfmin-plt.ylim()[0])
-      if ticklen == 0.: 
-         tmpticklen = np.max([np.min([(plt.ylim()[1]-plt.ylim()[0])/30.,np.min([tmpticklens[tmpticklens > 0]])]),(plt.ylim()[1]-plt.ylim()[0])/40.])
-      else:
-         tmpticklen = ticklen
+      if len(tmpticklens) > 0:
+         if ticklen == 0.: 
+            tmpticklen = np.max([np.min([(plt.ylim()[1]-plt.ylim()[0])/30.,np.min([tmpticklens[tmpticklens > 0]])]),(plt.ylim()[1]-plt.ylim()[0])/40.])
+         else:
+            tmpticklen = ticklen
       for i in range(0,len(tmplines)):
          if w is not None and f is not None:
             tickstart = tmpfmin[i]-0.5*tmpticklen
