@@ -309,7 +309,7 @@ def lris_extract(filename, outname, weightfile=None,trimfile=False,x1=0, x2=0, y
 
    fitmp,fixmu = False,False
    if findmultiplepeaks:
-      if np.min(np.shape(d)) > 2+8*(maxpeaks-1): fitmp,fixmu,mp_out = ss.find_multiple_peaks(d,maxpeaks=maxpeaks)
+      if np.min(np.shape(d)) > 2+8*(maxpeaks-1): fitmp,fixmu,mp_out,bounds_arr = ss.find_multiple_peaks(d,maxpeaks=maxpeaks,output_plot=output_plot,output_plot_dir=output_plot_dir)
    if fitmp:
       numpeaks = np.shape(mp_out)[1]
       mutmp = mp_out[1]
@@ -318,30 +318,29 @@ def lris_extract(filename, outname, weightfile=None,trimfile=False,x1=0, x2=0, y
          output_plot_tmp = output_plot
          if output_plot !=  None:
             if gmusrt[imle] != 0: output_plot_tmp = 'line%i.'%(gmusrt[imle]+1) + output_plot
-         if imle == 0:
-            dlb=1
-         else:
-            dlb = int(0.5*(mutmp[gmusrt[imle]] + mutmp[gmusrt[imle-1]]))
+         dlb,dub = bounds_arr[2*imle],bounds_arr[2*imle+1]
          if dispaxis == 'x':
-            if imle == numpeaks-1:
-               dub = np.shape(d)[0]
-            else:
-               dub = int(np.floor(0.5*(mutmp[gmusrt[imle]] + mutmp[gmusrt[imle+1]])))
-            owavet,outspect,outvart = lris_extract_(d[dlb-1:dub,:],w,v[dlb-1:dub,:],s[dlb-1:dub,:],gain,rdnoise,outname,informat=informat,outformat=outformat, apmin=apmin, apmax=apmax,muorder=muorder, sigorder=sigorder, fitrange=fitrange, weight=weight,owave=None, do_plot=do_plot, do_subplot=do_subplot, stop_if_nan=stop_if_nan, weighted_var=weighted_var, output_plot = output_plot_tmp, output_plot_dir = output_plot_dir,dispaxis=dispaxis,nan_to_zero=nan_to_zero,return_data=return_data)
+            owavet,outspect,outvart = lris_extract_(d[dlb:dub+1,:],w,v[dlb:dub+1,:],s[dlb:dub+1,:],gain,rdnoise,outname,informat=informat,outformat=outformat, apmin=apmin, apmax=apmax,muorder=muorder, sigorder=sigorder, fitrange=fitrange, weight=weight,owave=None, do_plot=do_plot, do_subplot=do_subplot, stop_if_nan=stop_if_nan, weighted_var=weighted_var, output_plot = output_plot_tmp, output_plot_dir = output_plot_dir,dispaxis=dispaxis,nan_to_zero=nan_to_zero,return_data=return_data)
          else:
-            if imle == numpeaks-1:
-               dub = np.shape(d)[1]
-            else:
-               dub = int(np.floor(0.5*(mutmp[gmusrt[imle]] + mutmp[gmusrt[imle+1]])))
-            owavet,outspect,outvart = lris_extract_(d[:,dlb-1:dub],w,v[dlb-1:dub,:],s[:,dlb-1:dub],gain,rdnoise,outname,informat=informat,outformat=outformat, apmin=apmin, apmax=apmax,muorder=muorder, sigorder=sigorder, fitrange=fitrange, weight=weight,owave=None, do_plot=do_plot, do_subplot=do_subplot, stop_if_nan=stop_if_nan, weighted_var=weighted_var, output_plot = output_plot_tmp, output_plot_dir = output_plot_dir,dispaxis=dispaxis,nan_to_zero=nan_to_zero,return_data=return_data)
+            owavet,outspect,outvart = lris_extract_(d[:,dlb:dub+1],w,v[dlb:dub+1,:],s[:,dlb:dub+1],gain,rdnoise,outname,informat=informat,outformat=outformat, apmin=apmin, apmax=apmax,muorder=muorder, sigorder=sigorder, fitrange=fitrange, weight=weight,owave=None, do_plot=do_plot, do_subplot=do_subplot, stop_if_nan=stop_if_nan, weighted_var=weighted_var, output_plot = output_plot_tmp, output_plot_dir = output_plot_dir,dispaxis=dispaxis,nan_to_zero=nan_to_zero,return_data=return_data)
          if imle == 0:
             owave,outspec,outvar = np.zeros((numpeaks,len(owavet))),np.zeros((numpeaks,len(outspect))),np.zeros((numpeaks,len(outvart)))
          owave[imle],outspec[imle],outvar[imle] = owavet,outspect,outvart
    else:
-      owave,outspec,outvar = lris_extract_(d,w,v,s,gain,rdnoise,outname,informat=informat,outformat=outformat, apmin=apmin, apmax=apmax,muorder=muorder, sigorder=sigorder, fitrange=fitrange, weight=weight,owave=None, do_plot=do_plot, do_subplot=do_subplot, stop_if_nan=stop_if_nan, weighted_var=weighted_var, output_plot = output_plot, output_plot_dir = output_plot_dir,dispaxis=dispaxis,nan_to_zero=nan_to_zero,return_data=return_data)
+      dlb,dub = bounds_arr[0],bounds_arr[1]
+      if dispaxis == 'x':
+         owave,outspec,outvar = lris_extract_(d[dlb:dub+1,:],w,v[dlb:dub+1,:],s[dlb:dub+1,:],gain,rdnoise,outname,informat=informat,outformat=outformat, apmin=apmin, apmax=apmax,muorder=muorder, sigorder=sigorder, fitrange=fitrange, weight=weight,owave=None, do_plot=do_plot, do_subplot=do_subplot, stop_if_nan=stop_if_nan, weighted_var=weighted_var, output_plot = output_plot, output_plot_dir = output_plot_dir,dispaxis=dispaxis,nan_to_zero=nan_to_zero,return_data=return_data)
+      else:
+         owave,outspec,outvar = lris_extract_(d[:,dlb:dub+1],w,v[:,dlb:dub+1],s[:,dlb:dub+1],gain,rdnoise,outname,informat=informat,outformat=outformat, apmin=apmin, apmax=apmax,muorder=muorder, sigorder=sigorder, fitrange=fitrange, weight=weight,owave=None, do_plot=do_plot, do_subplot=do_subplot, stop_if_nan=stop_if_nan, weighted_var=weighted_var, output_plot = output_plot, output_plot_dir = output_plot_dir,dispaxis=dispaxis,nan_to_zero=nan_to_zero,return_data=return_data)
    """ Write the output spectrum in the requested format """
    if(outformat == 'mwa'):
       st.make_spec(outspec,outvar,owave,outname,clobber=True)
    else:
       ss.save_spectrum(outname,owave,outspec,outvar)
       
+
+#-----------------------------------------------------------------------
+
+def plot_trace(datafile, weightfile=None,trimfile=False,x1=0, x2=0, y1=0, y2=0,informat='new', weighted_var=True,dispaxis='x'):
+   d,w,v = read_lris_spec(datafile,weightfilename=weightfile,x1=x1,x2=x2,y1=y1,y2=y2,trimfile=trimfile,informat=informat,weighted_var=weighted_var)
+   ss.find_trace(d,dispaxis=dispaxis,do_plot=True,do_subplot=False,nofit=True)

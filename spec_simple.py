@@ -108,8 +108,8 @@ def read_spectrum(filename, informat='text', varspec=True, verbose=True, line=1)
       flux = hdulist[1].data.copy()
       var  = hdulist[3].data.copy()
       varspec = True
-      wavelength = n.arange(flux.size)
       hdr1 = hdulist[1].header
+      wavelength = n.arange(flux.size) - hdr['crpix1']
       wavelength = hdr1['crval1'] + wavelength*hdr1['cd1_1']
       del hdulist
    else:
@@ -226,7 +226,7 @@ def plot_spectrum(filename, varspec=True, informat="text",
                   title="Extracted Spectrum",
                   fontsize=12, docolor=True, rmsoffset=0, rmsls=None,
                   add_atm_trans=False, atmscale=1.05, atmfwhm=15.,
-                  atmoffset=0., atmls='-',verbose=True,line=1,output=False):
+                  atmoffset=0., atmls='-',verbose=True,line=1,output=False,clear=False):
    """
    Given an input file with spectroscopy information, plot a spectrum.  
    The input file can have one of two formats: text (the default) or mwa
@@ -245,6 +245,7 @@ def plot_spectrum(filename, varspec=True, informat="text",
    """
 
    """ Read in the spectrum, using the appropriate input format """
+   if clear: plt.clf()
    wavelength,flux,var = read_spectrum(filename, informat, varspec, verbose, line=line)
 
    """ Plot the spectrum """
@@ -595,6 +596,17 @@ def find_peak(data,dispaxis="x",mu0=None,sig0=None,fixmu=False,fixsig=False,
             plt.axvline(p_out[1][ipap]+apmax,color='k')
       plt.xlabel('Pixel number in the spatial direction')
       plt.title('Compressed Spatial Plot')
+   elif showplot and nofit:
+      if(do_subplot):
+         plt.figure(2)
+         plt.subplot(221)
+      else:
+         plt.figure(2)
+         plt.clf()
+      plt.plot(x,cdat,linestyle='steps')
+      plt.xlabel('Pixel number in the spatial direction')
+      plt.title('Compressed Spatial Plot')
+      
 
    if nofit:
       return np.array([bkgd0,mu0,sig0,amp0])
@@ -739,7 +751,7 @@ def plot_multiple_peaks(cdat,tp,theight,apmin=-4.,apmax=4.,maxpeaks=2,fig=4,clea
 
 #-----------------------------------------------------------------------
 
-def find_multiple_peaks(data,dispaxis="x",apmin=-4.,apmax=4.,maxpeaks=2):
+def find_multiple_peaks(data,dispaxis="x",apmin=-4.,apmax=4.,maxpeaks=2,output_plot=None,output_plot_dir=None):
    tdata = data.copy()
    gfbc = find_blank_columns(tdata)
    if dispaxis == 'x':
@@ -790,6 +802,7 @@ def find_multiple_peaks(data,dispaxis="x",apmin=-4.,apmax=4.,maxpeaks=2):
          print 'Invalid input\n'
    fitpeaks = np.zeros(maxpeaks,dtype='bool')
    fitpeaks[0] = True
+   bounds_arr = np.array([0,np.min(np.shape(data))])
    if fitmp:
       for iwp in range(1,maxpeaks):
          tflag = False
@@ -814,7 +827,60 @@ def find_multiple_peaks(data,dispaxis="x",apmin=-4.,apmax=4.,maxpeaks=2):
                         print 'Invalid input\n'
             else:
                print 'Invalid input\n'
-   if ((fitpeaks[0]) & (len(fitpeaks[fitpeaks]) == 1)): 
+      num_peaks = len(fitpeaks[fitpeaks])
+      mp_out = np.zeros((4,num_peaks))
+      for impo in range(0,maxpeaks): 
+         if fitpeaks[impo]: 
+            inow = len(fitpeaks[0:impo+1][fitpeaks[0:impo+1]])
+            mp_out[:,inow-1] = tp[inow-1]
+      mus_tmp = mp_out[1]
+      sort_mus = np.sort(mus_tmp)
+      bounds_arr = np.zeros(2*num_peaks)
+      bounds_arr[2*num_peaks-1] = np.min(np.shape(data))
+      for il in range(0,num_peaks-1): bounds_arr[2*il+1:2*il+3] = np.mean(sort_mus[il:il+2])
+      plot_multiple_peaks(cdat,tp,theight,apmin=apmin,apmax=apmax,maxpeaks=num_peaks)
+      for il in range(0,2*num_peaks): plt.axvline(bounds_arr[il],color='k')
+      tflag = False
+      inp_aps = raw_input("Are these bounds okay? (y/n)\n")
+      while not tflag:
+         if ((inp_aps == 'y') | (inp_aps == 'Y')):
+            tflag = True
+         elif ((inp_aps == 'n') | (inp_aps == 'N')):
+            for ilf in range(0,num_peaks):
+               tflag2 = False
+               inp_aps2 = raw_input("Are the bounds for peak %i okay? (y/n)\n"%(ilf+1))
+               while not tflag2:
+                  if ((inp_aps2 == 'y') | (inp_aps2 == 'Y')):
+                     tflag2 = True
+                  elif ((inp_aps2 == 'n') | (inp_aps2 == 'N')):
+                     tflag3 = False
+                     nlb = raw_input("Current bounds for peak %i are (%.1f,%.1f). Enter new lower bound:\n"%(ilf+1,bounds_arr[2*ilf],bounds_arr[2*ilf+1]))
+                     nub = raw_input('Enter new upper bound:\n')
+                     while not tflag3:
+                        try: 
+                           nlb,nub = float(nlb),float(nub)
+                           if ((nlb < 0) | (nub > np.min(np.shape(data))) | (nub <= nlb)): raise ValueError
+                           bounds_arr[2*ilf],bounds_arr[2*ilf+1] = nlb,nub
+                           plot_multiple_peaks(cdat,tp,theight,apmin=apmin,apmax=apmax,maxpeaks=num_peaks)
+                           for ilt in range(0,2*num_peaks): plt.axvline(bounds_arr[ilt],color='k')
+                           tflag3 = True
+                           inp_aps2 = raw_input("New bounds for peak %i are: (%.1f,%.1f). Are these okay? (y/n)\n"%(ilf+1,bounds_arr[2*ilf],bounds_arr[2*ilf+1]))
+                        except ValueError:
+                           print 'Invalid input. Bounds must be floats between 0 and %.1f.\n'%(np.min(np.shape(data)))
+                           nlb = raw_input("Current bounds for peak %i are (%.1f,%.1f). Enter new lower bound:\n"%(ilf+1,bounds_arr[2*ilf],bounds_arr[2*ilf+1]))
+                           nub = raw_input('Enter new upper bound:\n')
+                  else:
+                     print 'Invalid input\n'
+                     inp_aps = raw_input("Are the bounds for peak %i okay? (y/n)\n"%(ilf+1))
+            tflag = True
+         else:
+            print 'Invalid input\n'
+            inp_aps = raw_input("Are these bounds okay? (y/n)\n")
+   try:
+      bnds_bool = (bounds_arr == np.array([0,np.min(np.shape(data))])).all()
+   except AttributeError:
+      bnds_bool = (bounds_arr == np.array([0,np.min(np.shape(data))]))
+   if ((fitpeaks[0]) & (len(fitpeaks[fitpeaks]) == 1) & bnds_bool): 
       fitmp = False
       print 'No secondary peaks selected. Reverting to normal analysis.'
    num_peaks = len(fitpeaks[fitpeaks])
@@ -823,43 +889,54 @@ def find_multiple_peaks(data,dispaxis="x",apmin=-4.,apmax=4.,maxpeaks=2):
       if fitpeaks[impo]: 
          inow = len(fitpeaks[0:impo+1][fitpeaks[0:impo+1]])
          mp_out[:,inow-1] = tp[inow-1]
+   if output_plot != None:
+      outplotname = 'bounds.%s'%output_plot
+      if output_plot_dir != None: outplotname = '%s/%s'%(output_plot_dir,outplotname)
+      plot_multiple_peaks(cdat,np.transpose(mp_out),theight,apmin=apmin,apmax=apmax,maxpeaks=num_peaks)
+      for il in range(0,2*num_peaks): plt.axvline(bounds_arr[il],color='k')
+      plt.title('Compressed Spatial Plot with Extraction Regions')
+      plt.savefig(outplotname)
    if num_peaks == 1:
-      return False,fixmu,tp[0]
+      return False,fixmu,tp[0],bounds_arr
    else:
-      return fitmp,fixmu,mp_out
+      return fitmp,fixmu,mp_out,bounds_arr
 
 #-----------------------------------------------------------------------
 
 def find_trace(data,dispaxis="x",apmin=-4.,apmax=4.,do_plot=True,
-               do_subplot=False,findmultiplepeaks=False,get_bkgd=False,get_amp=False):
+               do_subplot=False,findmultiplepeaks=False,get_bkgd=False,get_amp=False,nofit=False):
    """
    First step in the reduction process.  
    Runs find_peak on the full 2d spectrum in order to set the initial 
     guess for trace_spectrum.
    """
    fitmp,fixmu = False,False
+   if nofit: findmultiplepeaks,get_bkgd,get_amp=False,False,False
    if findmultiplepeaks:
-      fitmp,fixmu,mp_vars = find_multiple_peaks(data)
+      fitmp,fixmu,mp_vars,bounds_arr = find_multiple_peaks(data)
    if fitmp:
       p = find_peak(data,dispaxis=dispaxis,apmin=apmin,apmax=apmax,showplot=do_plot,do_subplot=do_subplot,mu0=mp_vars[1],sig0=mp_vars[2])
    elif fixmu:
       p = find_peak(data,dispaxis=dispaxis,apmin=apmin,apmax=apmax,showplot=do_plot,do_subplot=do_subplot,mu0=mp_vars[1],sig0=mp_vars[2],fixmu=True)
+   elif nofit:
+      find_peak(data,dispaxis=dispaxis,showplot=do_plot,do_subplot=do_subplot,nofit=True)
    else:
       p = find_peak(data,dispaxis=dispaxis,apmin=apmin,apmax=apmax,showplot=do_plot,do_subplot=do_subplot)
-   mu0  = p[1]
-   sig0 = p[2]
-   bkgd = p[0]
-   amp0 = p[3]
-   if np.shape(bkgd) != (): bkgd = np.sum(p[0])
-   if get_bkgd:
-      if get_amp:
-         return mu0,sig0,amp0,bkgd
+   if not nofit:
+      mu0  = p[1]
+      sig0 = p[2]
+      bkgd = p[0]
+      amp0 = p[3]
+      if np.shape(bkgd) != (): bkgd = np.sum(p[0])
+      if get_bkgd:
+         if get_amp:
+            return mu0,sig0,amp0,bkgd
+         else:
+            return mu0,sig0,bkgd
+      elif get_amp:
+         return mu0,sig0,amp0
       else:
-         return mu0,sig0,bkgd
-   elif get_amp:
-      return mu0,sig0,amp0
-   else:
-      return mu0,sig0
+         return mu0,sig0
 
 #-----------------------------------------------------------------------
 
@@ -1621,7 +1698,7 @@ def normalize(infile,outfile,order=6,fitrange=None,filtwidth=11):
 
 #-----------------------------------------------------------------------
 
-def mark_spec_emission(z, w=None, f=None, labww=20., labfs=12, ticklen=0.):
+def mark_spec_emission(z, w=None, f=None, labww=20., labfs=12, ticklen=0.,showz=True):
    """
    Marks the location of expected emission lines in a spectrum, given
     a redshift (z).  The default behavior is just to mark the lines with
@@ -1743,12 +1820,14 @@ def mark_spec_emission(z, w=None, f=None, labww=20., labfs=12, ticklen=0.):
                #print i['label'],tickstart,labstart,tmpticklen,tmpfmax[i]
          else:
             plt.axvline(xarr[i],linestyle='--',color='k',lw=1)
+   if showz: 
+      plt.text(plt.xlim()[0]+0.05*(plt.xlim()[1]-plt.xlim()[0]),plt.ylim()[1]-0.05*(plt.ylim()[1]-plt.ylim()[0]),'z = %5.3f'%z,color='k',rotation='horizontal',ha='left',va='center',fontsize=labfs+4)
 
 
 
 #-----------------------------------------------------------------------
 
-def mark_spec_absorption(z, w=None, f=None, labww=20., labfs=12, ticklen=0.):
+def mark_spec_absorption(z, w=None, f=None, labww=20., labfs=12, ticklen=0.,showz=True):
    """
    Marks the location of expected absorption lines in a spectrum, given
     a redshift (z).  The default behavior is just to mark the lines with
@@ -1849,11 +1928,13 @@ def mark_spec_absorption(z, w=None, f=None, labww=20., labfs=12, ticklen=0.):
                #print i['label'],tickstart,labstart,tmpticklen,tmpfmin
                if tmplines[i]['plot']:
                   plt.text(xarr[i],labstart,tmplines[i]['label'],color='k',rotation='vertical',ha='center',va='top',fontsize=labfs)
-            elif tmpfmin > plt.ylim()[0]:
+            elif tmpfmin[i] > plt.ylim()[0]:
                plt.axvline(xarr[i],linestyle='--',color='k',lw=1)
                #print i['label'],tickstart,labstart,tmpticklen,tmpfmin
          else:
             plt.axvline(xarr[i],linestyle='--',color='k',lw=1)
+   if showz: 
+      plt.text(plt.xlim()[0]+0.05*(plt.xlim()[1]-plt.xlim()[0]),plt.ylim()[1]-0.05*(plt.ylim()[1]-plt.ylim()[0]),'z = %5.3f'%z,color='k',rotation='horizontal',ha='left',va='center',fontsize=labfs+4)
 
 
 #-----------------------------------------------------------------------
@@ -1909,7 +1990,7 @@ def plot_atm_trans(w, fwhm=15., flux=None, scale=1.05, offset=0.0,
 
 #-----------------------------------------------------------------------
 
-def smooth_boxcar(infile, filtwidth, outfile=None, varwt=True, title='Smoothed Spectrum',line=1,hasvar=True,output=False):
+def smooth_boxcar(infile, filtwidth, outfile=None, varwt=True, title='Smoothed Spectrum',line=1,hasvar=True,output=False,clear=False):
    """
    Does a boxcar smooth of an input spectrum.  The default is to do
    inverse variance weighting, using the variance encoded in the third column
@@ -1919,6 +2000,7 @@ def smooth_boxcar(infile, filtwidth, outfile=None, varwt=True, title='Smoothed S
    """
 
    """ Read the input spectrum """
+   if clear: plt.clf()
    inspec = numpy.loadtxt(infile)
    wavelength = inspec[:,0]
    if line == 1:
