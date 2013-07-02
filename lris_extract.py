@@ -306,18 +306,25 @@ def lris_extract(filename, outname, weightfile=None,trimfile=False,x1=0, x2=0, y
       s = v
    else:
       s = numpy.sqrt(v)
-
+   bounds_arr = np.array([0,np.min(np.shape(d))])
    fitmp,fixmu = False,False
    if findmultiplepeaks:
-      if np.min(np.shape(d)) > 2+8*(maxpeaks-1): fitmp,fixmu,mp_out,bounds_arr = ss.find_multiple_peaks(d,maxpeaks=maxpeaks,output_plot=output_plot,output_plot_dir=output_plot_dir)
+      if np.min(np.shape(d)) > 3+(1+2*np.fabs(apmin)+2*apmax)*(maxpeaks-1): 
+         fitmp,fixmu,mp_out,bounds_arr = ss.find_multiple_peaks(d,maxpeaks=maxpeaks,output_plot=output_plot,output_plot_dir=output_plot_dir)
+      else:
+         mpflag,ipk = False,maxpeaks-1
+         while ((not mpflag) & (ipk > 1)):
+            if np.min(np.shape(d)) > 3+(1+2*np.fabs(apmin)+2*apmax)*(ipk-1): 
+               fitmp,fixmu,mp_out,bounds_arr = ss.find_multiple_peaks(d,maxpeaks=ipk,output_plot=output_plot,output_plot_dir=output_plot_dir)
+               mpflag = True
+            ipk -= 1
    if fitmp:
       numpeaks = np.shape(mp_out)[1]
       mutmp = mp_out[1]
-      gmusrt = np.argsort(mutmp)
       for imle in range(0,numpeaks):
          output_plot_tmp = output_plot
          if output_plot !=  None:
-            if gmusrt[imle] != 0: output_plot_tmp = 'line%i.'%(gmusrt[imle]+1) + output_plot
+            if imle != 0: output_plot_tmp = 'line%i.'%(imle+1) + output_plot
          dlb,dub = bounds_arr[2*imle],bounds_arr[2*imle+1]
          if dispaxis == 'x':
             owavet,outspect,outvart = lris_extract_(d[dlb:dub+1,:],w,v[dlb:dub+1,:],s[dlb:dub+1,:],gain,rdnoise,outname,informat=informat,outformat=outformat, apmin=apmin, apmax=apmax,muorder=muorder, sigorder=sigorder, fitrange=fitrange, weight=weight,owave=None, do_plot=do_plot, do_subplot=do_subplot, stop_if_nan=stop_if_nan, weighted_var=weighted_var, output_plot = output_plot_tmp, output_plot_dir = output_plot_dir,dispaxis=dispaxis,nan_to_zero=nan_to_zero,return_data=return_data)

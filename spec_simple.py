@@ -725,7 +725,7 @@ def extract_wtsum_col(spatialdat,mu,apmin,apmax,weight='gauss',sig=1.0,
 
 #-----------------------------------------------------------------------
 
-def plot_multiple_peaks(cdat,tp,theight,apmin=-4.,apmax=4.,maxpeaks=2,fig=4,clearfig=True):
+def plot_multiple_peaks(cdat,tp,theight,apmin=-4.,apmax=4.,maxpeaks=2,fig=4,clearfig=True,plot_fits=True):
    plt.figure(fig)
    if clearfig: plt.clf()
    plt.plot(np.arange(1,theight+1),cdat,linestyle='steps',color='black')
@@ -733,7 +733,7 @@ def plot_multiple_peaks(cdat,tp,theight,apmin=-4.,apmax=4.,maxpeaks=2,fig=4,clea
    tcolors = np.array(['red','cyan','magenta','green','blue','yellow'])
    for ipg in range(0,maxpeaks):
       ymod = make_gauss_plus_bkgd(xmod,tp[ipg][1],tp[ipg][2],tp[ipg][3],tp[0][0])
-      plt.plot(xmod,ymod,color=tcolors[ipg])
+      if plot_fits: plt.plot(xmod,ymod,color=tcolors[ipg])
       plt.axvline(tp[ipg][1]+apmin,color=tcolors[ipg])
       plt.axvline(tp[ipg][1]+apmax,color=tcolors[ipg])
       if tp[ipg][3]*1.05 > 2*np.max(cdat):
@@ -769,7 +769,7 @@ def find_multiple_peaks(data,dispaxis="x",apmin=-4.,apmax=4.,maxpeaks=2,output_p
          p_prelim = find_peak(tdata[gx,:],dispaxis=dispaxis,apmin=apmin,apmax=apmax,showplot=False,do_subplot=False,nofit=True)
          tp[ifmp] = p_prelim
          tp[ifmp][1] = x[gx[int(tp[ifmp][1])-1]]
-         gxprev = gx
+         gxprev = gx.copy()
       else:
          tlength = np.shape(tdata[gfbc,:])[0]
          theight = np.shape(tdata[gfbc,:])[1]
@@ -779,7 +779,7 @@ def find_multiple_peaks(data,dispaxis="x",apmin=-4.,apmax=4.,maxpeaks=2,output_p
          p_prelim = find_peak(tdata[:,gxprev],dispaxis=dispaxis,apmin=apmin,apmax=apmax,showplot=False,do_subplot=False,nofit=True)
          tp[ifmp] = p_prelim
          tp[ifmp][1] = x[gx[int(tp[ifmp][1])-1]]
-         gxprev = gx
+         gxprev = gx.copy()
    tp = find_peak(tdata,dispaxis=dispaxis,apmin=apmin,apmax=apmax,showplot=False,do_subplot=False,mu0=tp[:,1])
    tp[0] = np.ones(len(tp[1]))*tp[0]
    tp = np.transpose(tp)
@@ -804,6 +804,25 @@ def find_multiple_peaks(data,dispaxis="x",apmin=-4.,apmax=4.,maxpeaks=2,output_p
    fitpeaks[0] = True
    bounds_arr = np.array([0,np.min(np.shape(data))])
    if fitmp:
+      tflag = False
+      while not tflag:
+         inp_chp1 = raw_input("Is peak 1 okay? (y/n)\n")
+         if ((inp_chp1 == 'y') | (inp_chp1 == 'Y')):
+            tflag = True
+         elif((inp_chp1 == 'n') | (inp_chp1 == 'N')):
+            mflag = False
+            while not mflag:
+               inp_newp = raw_input("Current mu for peak 1 is %f. Is this acceptable? Enter 'y' or new value for mu.\n"%(tp[0][1]))
+               if ((inp_newp == 'y') | (inp_newp == 'Y')):
+                  mflag,tflag = True,True
+               else:
+                  try:
+                     tp[0][1] = float(inp_newp)
+                     plot_multiple_peaks(cdat,tp,theight,apmin=apmin,apmax=apmax,maxpeaks=maxpeaks)
+                  except ValueError:
+                     print 'Invalid input\n'
+         else:
+            print 'Invalid input\n'
       for iwp in range(1,maxpeaks):
          tflag = False
          while not tflag:
@@ -812,7 +831,7 @@ def find_multiple_peaks(data,dispaxis="x",apmin=-4.,apmax=4.,maxpeaks=2,output_p
                tflag,fitpeaks[iwp] = True,True
             elif((inp_whichp == 'n') | (inp_whichp == 'N')):
                tflag = True
-            elif inp_whichp == 'manual':
+            elif ((inp_whichp == 'manual') | (inp_whichp == 'm')):
                mflag = False
                while not mflag:
                   inp_newp = raw_input("Current mu for peak %i is %f. Is this acceptable? Enter 'y' or new value for mu.\n"%(iwp+1,tp[iwp][1]))
@@ -835,11 +854,16 @@ def find_multiple_peaks(data,dispaxis="x",apmin=-4.,apmax=4.,maxpeaks=2,output_p
             mp_out[:,inow-1] = tp[inow-1]
       mus_tmp = mp_out[1]
       sort_mus = np.sort(mus_tmp)
+      argsort_mus = np.argsort(mus_tmp)
+      tbounds_arr = np.zeros(2*num_peaks)
+      tbounds_arr[2*num_peaks-1] = np.min(np.shape(data))
+      for il in range(0,num_peaks-1): tbounds_arr[2*il+1:2*il+3] = np.mean(sort_mus[il:il+2])
       bounds_arr = np.zeros(2*num_peaks)
-      bounds_arr[2*num_peaks-1] = np.min(np.shape(data))
-      for il in range(0,num_peaks-1): bounds_arr[2*il+1:2*il+3] = np.mean(sort_mus[il:il+2])
+      aa_mus = np.argsort(argsort_mus)
+      for il in range(0,num_peaks): bounds_arr[2*il:2*il+2] = tbounds_arr[2*aa_mus[il]:2*aa_mus[il]+2]
       plot_multiple_peaks(cdat,tp,theight,apmin=apmin,apmax=apmax,maxpeaks=num_peaks)
       for il in range(0,2*num_peaks): plt.axvline(bounds_arr[il],color='k')
+      
       tflag = False
       inp_aps = raw_input("Are these bounds okay? (y/n)\n")
       while not tflag:
@@ -871,7 +895,7 @@ def find_multiple_peaks(data,dispaxis="x",apmin=-4.,apmax=4.,maxpeaks=2,output_p
                            nub = raw_input('Enter new upper bound:\n')
                   else:
                      print 'Invalid input\n'
-                     inp_aps = raw_input("Are the bounds for peak %i okay? (y/n)\n"%(ilf+1))
+                     inp_aps2 = raw_input("Are the bounds for peak %i okay? (y/n)\n"%(ilf+1))
             tflag = True
          else:
             print 'Invalid input\n'
@@ -892,7 +916,7 @@ def find_multiple_peaks(data,dispaxis="x",apmin=-4.,apmax=4.,maxpeaks=2,output_p
    if output_plot != None:
       outplotname = 'bounds.%s'%output_plot
       if output_plot_dir != None: outplotname = '%s/%s'%(output_plot_dir,outplotname)
-      plot_multiple_peaks(cdat,np.transpose(mp_out),theight,apmin=apmin,apmax=apmax,maxpeaks=num_peaks)
+      plot_multiple_peaks(cdat,np.transpose(mp_out),theight,apmin=apmin,apmax=apmax,maxpeaks=num_peaks,plot_fits=False)
       for il in range(0,2*num_peaks): plt.axvline(bounds_arr[il],color='k')
       plt.title('Compressed Spatial Plot with Extraction Regions')
       plt.savefig(outplotname)
@@ -1072,6 +1096,8 @@ def trace_spectrum(data,mu0,sig0,dispaxis="x",stepsize=25,muorder=3,
          ptmp = find_peak(tmpdata,dispaxis=dispaxis,showplot=False,verbose=False)
       mu[i]    = ptmp[1]
       sigma[i] = ptmp[2]
+      if mu[i] > np.min(np.shape(data))+1: mu[i] = np.min(np.shape(data))+1
+      if mu[i] < 0: mu[i] = 0
    print "   Done"
 
    # Fit a polynomial to the trace
