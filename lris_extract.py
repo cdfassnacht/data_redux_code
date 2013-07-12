@@ -138,6 +138,7 @@ def lris_extract_(d,w,v,s,gain,rdnoise,outname,informat='new',outformat='text', 
    if do_plot:
       plot.figure(1)
       plot.clf()
+      print np.shape(d),mp,sp
       plot.imshow(d,origin='lower',cmap=plot.cm.gray,vmin=mp-sp,vmax=mp+4*sp)
 
    """ Find the trace """
@@ -308,14 +309,15 @@ def lris_extract(filename, outname, weightfile=None,trimfile=False,x1=0, x2=0, y
       s = numpy.sqrt(v)
    bounds_arr = np.array([0,np.min(np.shape(d))])
    fitmp,fixmu = False,False
+   apertures = 4*np.ones(1)
    if findmultiplepeaks:
       if np.min(np.shape(d)) > 3+(1+2*np.fabs(apmin)+2*apmax)*(maxpeaks-1): 
-         fitmp,fixmu,mp_out,bounds_arr = ss.find_multiple_peaks(d,maxpeaks=maxpeaks,output_plot=output_plot,output_plot_dir=output_plot_dir)
+         fitmp,fixmu,mp_out,bounds_arr,apertures = ss.find_multiple_peaks(d,maxpeaks=maxpeaks,output_plot=output_plot,output_plot_dir=output_plot_dir,check_aps=True)
       else:
          mpflag,ipk = False,maxpeaks-1
          while ((not mpflag) & (ipk > 1)):
             if np.min(np.shape(d)) > 3+(1+2*np.fabs(apmin)+2*apmax)*(ipk-1): 
-               fitmp,fixmu,mp_out,bounds_arr = ss.find_multiple_peaks(d,maxpeaks=ipk,output_plot=output_plot,output_plot_dir=output_plot_dir)
+               fitmp,fixmu,mp_out,bounds_arr,apertures = ss.find_multiple_peaks(d,maxpeaks=ipk,output_plot=output_plot,output_plot_dir=output_plot_dir,check_aps=True)
                mpflag = True
             ipk -= 1
    if fitmp:
@@ -327,18 +329,18 @@ def lris_extract(filename, outname, weightfile=None,trimfile=False,x1=0, x2=0, y
             if imle != 0: output_plot_tmp = 'line%i.'%(imle+1) + output_plot
          dlb,dub = bounds_arr[2*imle],bounds_arr[2*imle+1]
          if dispaxis == 'x':
-            owavet,outspect,outvart = lris_extract_(d[dlb:dub+1,:],w,v[dlb:dub+1,:],s[dlb:dub+1,:],gain,rdnoise,outname,informat=informat,outformat=outformat, apmin=apmin, apmax=apmax,muorder=muorder, sigorder=sigorder, fitrange=fitrange, weight=weight,owave=None, do_plot=do_plot, do_subplot=do_subplot, stop_if_nan=stop_if_nan, weighted_var=weighted_var, output_plot = output_plot_tmp, output_plot_dir = output_plot_dir,dispaxis=dispaxis,nan_to_zero=nan_to_zero,return_data=return_data)
+            owavet,outspect,outvart = lris_extract_(d[dlb:dub+1,:],w,v[dlb:dub+1,:],s[dlb:dub+1,:],gain,rdnoise,outname,informat=informat,outformat=outformat, apmin=-1*apertures[imle], apmax=apertures[imle],muorder=muorder, sigorder=sigorder, fitrange=fitrange, weight=weight,owave=None, do_plot=do_plot, do_subplot=do_subplot, stop_if_nan=stop_if_nan, weighted_var=weighted_var, output_plot = output_plot_tmp, output_plot_dir = output_plot_dir,dispaxis=dispaxis,nan_to_zero=nan_to_zero,return_data=return_data)
          else:
-            owavet,outspect,outvart = lris_extract_(d[:,dlb:dub+1],w,v[dlb:dub+1,:],s[:,dlb:dub+1],gain,rdnoise,outname,informat=informat,outformat=outformat, apmin=apmin, apmax=apmax,muorder=muorder, sigorder=sigorder, fitrange=fitrange, weight=weight,owave=None, do_plot=do_plot, do_subplot=do_subplot, stop_if_nan=stop_if_nan, weighted_var=weighted_var, output_plot = output_plot_tmp, output_plot_dir = output_plot_dir,dispaxis=dispaxis,nan_to_zero=nan_to_zero,return_data=return_data)
+            owavet,outspect,outvart = lris_extract_(d[:,dlb:dub+1],w,v[dlb:dub+1,:],s[:,dlb:dub+1],gain,rdnoise,outname,informat=informat,outformat=outformat, apmin=-1*apertures[imle], apmax=apertures[imle],muorder=muorder, sigorder=sigorder, fitrange=fitrange, weight=weight,owave=None, do_plot=do_plot, do_subplot=do_subplot, stop_if_nan=stop_if_nan, weighted_var=weighted_var, output_plot = output_plot_tmp, output_plot_dir = output_plot_dir,dispaxis=dispaxis,nan_to_zero=nan_to_zero,return_data=return_data)
          if imle == 0:
             owave,outspec,outvar = np.zeros((numpeaks,len(owavet))),np.zeros((numpeaks,len(outspect))),np.zeros((numpeaks,len(outvart)))
          owave[imle],outspec[imle],outvar[imle] = owavet,outspect,outvart
    else:
       dlb,dub = bounds_arr[0],bounds_arr[1]
       if dispaxis == 'x':
-         owave,outspec,outvar = lris_extract_(d[dlb:dub+1,:],w,v[dlb:dub+1,:],s[dlb:dub+1,:],gain,rdnoise,outname,informat=informat,outformat=outformat, apmin=apmin, apmax=apmax,muorder=muorder, sigorder=sigorder, fitrange=fitrange, weight=weight,owave=None, do_plot=do_plot, do_subplot=do_subplot, stop_if_nan=stop_if_nan, weighted_var=weighted_var, output_plot = output_plot, output_plot_dir = output_plot_dir,dispaxis=dispaxis,nan_to_zero=nan_to_zero,return_data=return_data)
+         owave,outspec,outvar = lris_extract_(d[dlb:dub+1,:],w,v[dlb:dub+1,:],s[dlb:dub+1,:],gain,rdnoise,outname,informat=informat,outformat=outformat, apmin=-1*apertures[0], apmax=apertures[0],muorder=muorder, sigorder=sigorder, fitrange=fitrange, weight=weight,owave=None, do_plot=do_plot, do_subplot=do_subplot, stop_if_nan=stop_if_nan, weighted_var=weighted_var, output_plot = output_plot, output_plot_dir = output_plot_dir,dispaxis=dispaxis,nan_to_zero=nan_to_zero,return_data=return_data)
       else:
-         owave,outspec,outvar = lris_extract_(d[:,dlb:dub+1],w,v[:,dlb:dub+1],s[:,dlb:dub+1],gain,rdnoise,outname,informat=informat,outformat=outformat, apmin=apmin, apmax=apmax,muorder=muorder, sigorder=sigorder, fitrange=fitrange, weight=weight,owave=None, do_plot=do_plot, do_subplot=do_subplot, stop_if_nan=stop_if_nan, weighted_var=weighted_var, output_plot = output_plot, output_plot_dir = output_plot_dir,dispaxis=dispaxis,nan_to_zero=nan_to_zero,return_data=return_data)
+         owave,outspec,outvar = lris_extract_(d[:,dlb:dub+1],w,v[:,dlb:dub+1],s[:,dlb:dub+1],gain,rdnoise,outname,informat=informat,outformat=outformat, apmin=-1*apertures[0], apmax=apertures[0],muorder=muorder, sigorder=sigorder, fitrange=fitrange, weight=weight,owave=None, do_plot=do_plot, do_subplot=do_subplot, stop_if_nan=stop_if_nan, weighted_var=weighted_var, output_plot = output_plot, output_plot_dir = output_plot_dir,dispaxis=dispaxis,nan_to_zero=nan_to_zero,return_data=return_data)
    """ Write the output spectrum in the requested format """
    if(outformat == 'mwa'):
       st.make_spec(outspec,outvar,owave,outname,clobber=True)

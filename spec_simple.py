@@ -725,7 +725,7 @@ def extract_wtsum_col(spatialdat,mu,apmin,apmax,weight='gauss',sig=1.0,
 
 #-----------------------------------------------------------------------
 
-def plot_multiple_peaks(cdat,tp,theight,apmin=-4.,apmax=4.,maxpeaks=2,fig=4,clearfig=True,plot_fits=True):
+def plot_multiple_peaks(cdat,tp,theight,apmin=-4.,apmax=4.,maxpeaks=2,fig=4,clearfig=True,plot_fits=True,apertures=None):
    plt.figure(fig)
    if clearfig: plt.clf()
    plt.plot(np.arange(1,theight+1),cdat,linestyle='steps',color='black')
@@ -734,8 +734,12 @@ def plot_multiple_peaks(cdat,tp,theight,apmin=-4.,apmax=4.,maxpeaks=2,fig=4,clea
    for ipg in range(0,maxpeaks):
       ymod = make_gauss_plus_bkgd(xmod,tp[ipg][1],tp[ipg][2],tp[ipg][3],tp[0][0])
       if plot_fits: plt.plot(xmod,ymod,color=tcolors[ipg])
-      plt.axvline(tp[ipg][1]+apmin,color=tcolors[ipg])
-      plt.axvline(tp[ipg][1]+apmax,color=tcolors[ipg])
+      if apertures == None:
+         plt.axvline(tp[ipg][1]+apmin,color=tcolors[ipg])
+         plt.axvline(tp[ipg][1]+apmax,color=tcolors[ipg])
+      else:
+         plt.axvline(tp[ipg][1]+apertures[ipg],color=tcolors[ipg])
+         plt.axvline(tp[ipg][1]-apertures[ipg],color=tcolors[ipg])
       if tp[ipg][3]*1.05 > 2*np.max(cdat):
          plt.text(tp[ipg][1],1.8*np.max(cdat),str(ipg+1),color=tcolors[ipg])
       elif ((tp[ipg][3]*1.05 < 2*np.min(cdat)) & (tp[ipg][3]*1.05 < -2*np.max(cdat))):
@@ -751,7 +755,7 @@ def plot_multiple_peaks(cdat,tp,theight,apmin=-4.,apmax=4.,maxpeaks=2,fig=4,clea
 
 #-----------------------------------------------------------------------
 
-def find_multiple_peaks(data,dispaxis="x",apmin=-4.,apmax=4.,maxpeaks=2,output_plot=None,output_plot_dir=None):
+def find_multiple_peaks(data,dispaxis="x",apmin=-4.,apmax=4.,maxpeaks=2,output_plot=None,output_plot_dir=None,check_aps=False):
    tdata = data.copy()
    gfbc = find_blank_columns(tdata)
    if dispaxis == 'x':
@@ -913,17 +917,59 @@ def find_multiple_peaks(data,dispaxis="x",apmin=-4.,apmax=4.,maxpeaks=2,output_p
       if fitpeaks[impo]: 
          inow = len(fitpeaks[0:impo+1][fitpeaks[0:impo+1]])
          mp_out[:,inow-1] = tp[inow-1]
+   aflag,change_aps = False,False
+   if check_aps:
+      while not aflag:
+         inp_aps = raw_input("Change apertures? (y/n)\n")
+         if ((inp_aps == 'y') | (inp_aps == 'Y')):
+            aflag,change_aps = True,True
+         elif ((inp_aps == 'n') | (inp_aps == 'N')):
+            aflag = True
+         else:
+            print 'Invalid input.\n'
+   apertures = 4.*np.ones(num_peaks)
+   if change_aps:
+      for iaps in range(0,num_peaks):
+         aflag = False
+         while not aflag:
+            inp_aps = raw_input("Change apertures for peak %i? (y/n)\n"%(iaps+1))
+            if ((inp_aps == 'y') | (inp_aps == 'Y')):
+               aflag2 = False
+               while not aflag2:
+                  inp_aps2 = raw_input("Aperture for peak %i is +%.1f,-%.1f. Is this okay? Enter 'y' or new width.\n"%(iaps+1,apertures[iaps],apertures[iaps]))
+                  if ((inp_aps2 == 'y') | (inp_aps2 == 'Y')):
+                     aflag2 = True
+                  else:
+                     try:
+                        if inp_aps > 0: 
+                           apertures[iaps] = inp_aps2
+                           plot_multiple_peaks(cdat,tp,theight,apmin=-1*apertures[iaps],apmax=apertures[iaps],maxpeaks=num_peaks,apertures=apertures)
+                        else:
+                           print 'Input value must be greater than zero.'
+                     except:
+                        print 'Invalid input'
+               aflag = True
+            elif ((inp_aps == 'n') | (inp_aps == 'N')):
+               aflag = True
+            else:
+               print 'Invalid input.\n'
    if output_plot != None:
       outplotname = 'bounds.%s'%output_plot
       if output_plot_dir != None: outplotname = '%s/%s'%(output_plot_dir,outplotname)
-      plot_multiple_peaks(cdat,np.transpose(mp_out),theight,apmin=apmin,apmax=apmax,maxpeaks=num_peaks,plot_fits=False)
+      plot_multiple_peaks(cdat,np.transpose(mp_out),theight,apmin=apmin,apmax=apmax,maxpeaks=num_peaks,plot_fits=False,apertures=apertures)
       for il in range(0,2*num_peaks): plt.axvline(bounds_arr[il],color='k')
       plt.title('Compressed Spatial Plot with Extraction Regions')
       plt.savefig(outplotname)
-   if num_peaks == 1:
-      return False,fixmu,tp[0],bounds_arr
+   if check_aps:
+      if num_peaks == 1:
+         return False,fixmu,tp[0],bounds_arr,apertures
+      else:
+         return fitmp,fixmu,mp_out,bounds_arr,apertures
    else:
-      return fitmp,fixmu,mp_out,bounds_arr
+      if num_peaks == 1:
+         return False,fixmu,tp[0],bounds_arr
+      else:
+         return fitmp,fixmu,mp_out,bounds_arr
 
 #-----------------------------------------------------------------------
 
