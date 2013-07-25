@@ -1565,30 +1565,29 @@ def make_sky_model(wavelength, smoothKernel=25., verbose=True):
       # Read in skymodel, which is in a B-spline format
       skymodel_file = '/Users/cdf/Code/python/nirspec/nirspec_skymodel.dat'
       skymodel = numpy.load(skymodel_file)
-
-      # Resample and smooth the model spectrum
-      wave = numpy.arange(wstart,wend,0.2)
-      tmpskymod = interpolate.splev(wave,skymodel)
-      tmpskymod = ndimage.gaussian_filter(tmpskymod,smoothKernel)
-
-      # Create a B-spline representation of the smoothed curve for use in
-      #  the wavecal optimization
-      model = interpolate.splrep(wave,tmpskymod)
-
-      # Finally use the initial guess for the dispersion and evaluate the
-      #  model sky at those points, using the B-spline model
-      skymod = interpolate.splev(wavelength,model)
-
-      # Clean up and return
-      del skymodel,tmpskymod,wave
-      return skymod
-
    else:
-      print ""
-      print "Optical sky model is not yet implemented."
-      print ""
-      return None
+      # Read in the sky model
+      skymodel_file = '/Users/cdf/Code/python/LRISredux/data/uves_sky.model'
+      f = open(skymodel_file)
+      skymodel = pickle.load(f)
+      f.close()
 
+   # Resample and smooth the model spectrum
+   wave = numpy.arange(wstart,wend,0.2)
+   tmpskymod = interpolate.splev(wave,skymodel)
+   tmpskymod = ndimage.gaussian_filter(tmpskymod,smoothKernel)
+
+   # Create a B-spline representation of the smoothed curve for use in
+   #  the wavecal optimization
+   model = interpolate.splrep(wave,tmpskymod)
+
+   # Finally use the initial guess for the dispersion and evaluate the
+   #  model sky at those points, using the B-spline model
+   skymod = interpolate.splev(wavelength,model)
+
+   # Clean up and return
+   del skymodel,tmpskymod,wave
+   return skymod
 
 #-----------------------------------------------------------------------
 
