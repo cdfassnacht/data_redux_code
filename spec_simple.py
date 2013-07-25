@@ -31,51 +31,23 @@ def clear_all(nfig=10):
 
 #-----------------------------------------------------------------------
 
-def find_blank_columns(data,comp_axis=0,output_dims=1,findblank=False):
+def load_raw_spectrum(filename,hdu=0):
    """
-   Takes 2-dimensional data and outputs indices of columns not entirely
-   composed of zeros. If output_dims is 1, only the indices of the columns
-   are give. If output_dims = 2, the indices for every point in any of these
-   columns are given. By default, it is actually non-blank columns that are
-   found. Setting findblank to True switches this.
+   Old version of load_2d_spectrum.  Kept in for legacy reasons.
    """
-   if data.ndim != 2: sys.exit("find_blank_columns takes only 2-dimensional data")
-   if output_dims==1:
-      fbc_tmp = np.zeros(n.shape(data)[1-comp_axis])
-      if comp_axis == 0:
-         gprelim = np.where(data[int(n.shape(data)[comp_axis]/2),:] == 0)[0]
-         for ifbc in range(0,len(gprelim)):
-            if len(data[data[:,gprelim[ifbc]] != 0]) == 0: fbc_tmp[gprelim[ifbc]] = 1
-      else:
-         gprelim = np.where(data[:,int(n.shape(data)[comp_axis]/2)] == 0)[0]
-         for ifbc in range(0,len(gprelim)):
-            if len(data[data[gprelim[ifbc],:] != 0]) == 0: fbc_tmp[gprelim[ifbc]] = 1
-      if findblank: fbc_tmp = 1-fbc_tmp
-      gfbc = np.where(fbc_tmp == 0)[0]
-   elif output_dims==2:
-      fbc_tmp = n.zeros(n.shape(data))
-      if comp_axis == 0:
-         gprelim = np.where(data[int(n.shape(data)[comp_axis]/2),:] == 0)[0]
-         for ifbc in range(0,len(gprelim)):
-            if len(data[data[:,gprelim[ifbc]] != 0]) == 0: fbc_tmp[:,gprelim[ifbc]] = 1
-      else:
-         gprelim = np.where(data[:,int(n.shape(data)[comp_axis]/2)] == 0)[0]
-         for ifbc in range(0,len(gprelim)):
-            if len(data[data[gprelim[ifbc],:] != 0]) == 0: fbc_tmp[gprelim[ifbc],:] = 1
-      if findblank: fbc_tmp = 1-fbc_tmp
-      gfbc = np.where(fbc_tmp == 0)
-   else:
-      sys.exit("output_dims parameter for find_blank_columns must be either 1 or 2. Value was: " + str(output_dims))
-   return gfbc
-
+   data = load_2d_spectrum(filename,hdu)
+   return data
 
 #-----------------------------------------------------------------------
 
-def load_raw_spectrum(filename):
+def load_2d_spectrum(filename, hdu=0):
    """
    Reads in a raw 2D spectrum from a fits file
    """
-   data = pyfits.open(filename)[0].data
+   data = pyfits.open(filename)[hdu].data
+   print ''
+   print 'Loaded a 2-dimensional spectrum from %s' % filename
+   print 'Data dimensions (x y): %dx%d' % (data.shape[1],data.shape[0])
    return data
 
 #-----------------------------------------------------------------------
@@ -144,6 +116,46 @@ def zap_cosmic_rays(data, outfile, sigmax=5., boxsize=7, dispaxis="x"):
 
    """ Clean up """
    del sky,skysub,ssrms,tmpsub,szapped
+
+#-----------------------------------------------------------------------
+
+def find_blank_columns(data,comp_axis=0,output_dims=1,findblank=False):
+   """
+   Takes 2-dimensional data and outputs indices of columns not entirely
+   composed of zeros. If output_dims is 1, only the indices of the columns
+   are give. If output_dims = 2, the indices for every point in any of these
+   columns are given. By default, it is actually non-blank columns that are
+   found. Setting findblank to True switches this.
+   """
+   if data.ndim != 2: sys.exit("find_blank_columns takes only 2-dimensional data")
+   if output_dims==1:
+      fbc_tmp = np.zeros(n.shape(data)[1-comp_axis])
+      if comp_axis == 0:
+         gprelim = np.where(data[int(n.shape(data)[comp_axis]/2),:] == 0)[0]
+         for ifbc in range(0,len(gprelim)):
+            if len(data[data[:,gprelim[ifbc]] != 0]) == 0: fbc_tmp[gprelim[ifbc]] = 1
+      else:
+         gprelim = np.where(data[:,int(n.shape(data)[comp_axis]/2)] == 0)[0]
+         for ifbc in range(0,len(gprelim)):
+            if len(data[data[gprelim[ifbc],:] != 0]) == 0: fbc_tmp[gprelim[ifbc]] = 1
+      if findblank: fbc_tmp = 1-fbc_tmp
+      gfbc = np.where(fbc_tmp == 0)[0]
+   elif output_dims==2:
+      fbc_tmp = n.zeros(n.shape(data))
+      if comp_axis == 0:
+         gprelim = np.where(data[int(n.shape(data)[comp_axis]/2),:] == 0)[0]
+         for ifbc in range(0,len(gprelim)):
+            if len(data[data[:,gprelim[ifbc]] != 0]) == 0: fbc_tmp[:,gprelim[ifbc]] = 1
+      else:
+         gprelim = np.where(data[:,int(n.shape(data)[comp_axis]/2)] == 0)[0]
+         for ifbc in range(0,len(gprelim)):
+            if len(data[data[gprelim[ifbc],:] != 0]) == 0: fbc_tmp[gprelim[ifbc],:] = 1
+      if findblank: fbc_tmp = 1-fbc_tmp
+      gfbc = np.where(fbc_tmp == 0)
+   else:
+      sys.exit("output_dims parameter for find_blank_columns must be either 1 or 2. Value was: " + str(output_dims))
+   return gfbc
+
 
 #-----------------------------------------------------------------------
 
