@@ -80,6 +80,73 @@ def load_raw_spectrum(filename):
 
 #-----------------------------------------------------------------------
 
+def zap_cosmic_rays(data, outfile, sigmax=5., boxsize=7, dispaxis="x"):
+   """
+   A method to reject cosmic rays from a 2D spectrum via the following steps:
+     1. Creates the median sky from the spectrum
+     2. Subtracts the sky from the spectrum
+     3. Divides the subtracted spectrum by the square root of the sky, which
+        gives it a constant rms
+     4. Rejects pixels that exceed a certain number of sigma
+     5. Adds the sky back in
+   """
+
+   from scipy.ndimage import filters
+
+   """ Set the dispersion axis direction """
+   if dispaxis == "y":
+      spaceaxis = 1
+   else:
+      spaceaxis = 0
+   
+   """ Take the median along the spatial direction to estimate the sky """
+   if data.ndim < 2:
+      print ""
+      print "ERROR: zap_cosmic_rays needs a 2 dimensional data set"
+      return
+   else:
+      sky1d = numpy.median(data,axis=spaceaxis)
+   sky = numpy.zeros(data.shape)
+   for i in range(data.shape[spaceaxis]):
+      if spaceaxis == 1:
+         sky[:,i] = sky1d
+      else:
+         sky[i,:] = sky1d
+
+   """ Subtract the sky  """
+   skysub = data - sky
+
+   """ 
+   Divide the result by the square root of the sky to get a rms image
+   """
+   ssrms = skysub / numpy.sqrt(sky)
+   m,s = ccd.sigma_clip(ssrms)
+   
+   """ Now subtract a median-filtered version of the spectrum """
+   tmpsub = ssrms - filters.median_filter(ssrms,boxsize)
+
+   """ 
+   Make a bad pixel mask that contains pixels in tmpsub with values > sigmax*s
+   """
+   mask = tmpsub > sigmax * s
+   tmpsub[mask] = m
+
+   """ Replace the bad pixels in skysub with a median-filtered value """
+   m2,s2 = ccd.sigma_clip(skysub)
+   skysub[mask] = m2
+   ssfilt = filters.median_filter(skysub,boxsize)
+   skysub[mask] = ssfilt[mask]
+
+   """ Add the sky back in and save the final result """
+   szapped = skysub + sky
+   pyfits.PrimaryHDU(szapped).writeto(outfile)
+   print ' Wrote szapped data to %s' % outfile
+
+   """ Clean up """
+   del sky,skysub,ssrms,tmpsub,szapped
+
+#-----------------------------------------------------------------------
+
 def read_spectrum(filename, informat='text', varspec=True, verbose=True, line=1):
    """
    Reads in an extracted 1D spectrum and possibly the associated variance
@@ -269,6 +336,63 @@ def plot_spectrum(filename, varspec=True, informat="text",
       del var
    if output:
       return wavelength,flux,var
+
+#-----------------------------------------------------------------------
+
+def subtract_sky(data, outfile, outskyspec, dispaxis='x', doplot=True):
+   """
+   Given the input 2D spectrum, creates a median sky and then subtracts
+   it from the input data.  Two outputs are saved: the 2D sky-subtracted
+   data and a 1D sky spectrum.
+
+   Inputs:
+      data       - array containing the 2D spectrum
+      outfile    - name for output fits file containing sky-subtracted spectrum
+      outskyspec - name for output 1D sky spectrum
+   """
+   """ Set the dispersion axis direction """
+   if dispaxis == "y":
+      spaceaxis = 1
+   else:
+      spaceaxis = 0
+   
+   """ Take the median along the spatial direction to estimate the sky """
+   if data.ndim < 2:
+      print ""
+      print "ERROR: subtract_sky needs a 2 dimensional data set"
+      return
+   else:
+      sky1d = numpy.median(data,axis=spaceaxis)
+   sky = numpy.zeros(data.shape)
+   for i in range(data.shape[spaceaxis]):
+      if spaceaxis == 1:
+         sky[:,i] = sky1d
+      else:
+         sky[i,:] = sky1d
+
+   """ Plot the sky if desired """
+   x = numpy.arange(sky1d.size)
+   if doplot:
+      if spaceaxis == 1:
+         xlab = 'Row'
+      else:
+         xlab = 'Column'
+      plot_spectrum_array(x,sky1d,xlabel=xlab,ylabel='Median Counts',
+                          title='Median sky spectrum')
+
+   """ Subtract the sky  """
+   skysub = data - sky
+
+   """ Save the sky-subtracted spectrum and the median sky """
+   pyfits.PrimaryHDU(skysub).writeto(outfile)
+   print ' Wrote sky-subtracted data to %s' % outfile
+   save_spectrum(outskyspec,x,sky1d)
+   print ' Wrote median sky spectrum to %s' % outskyspec
+   print ''
+
+   """ Clean up """
+   del sky,sky1d,skysub
+
 
 #-----------------------------------------------------------------------
 
@@ -1196,6 +1320,38 @@ def trace_spectrum(data,mu0,sig0,dispaxis="x",stepsize=25,muorder=3,
 
    # Return the fitted parameters
    return mupoly,sigpoly
+
+#--------------------------------------------------------------------------
+
+def find_and_trace(data, dispaxis="x", apmin=-4., apmax=4., stepsize=25,
+                   muorder=3, sigorder=4, fitrange=None, do_plot=True,
+                   do_subplot=False):
+
+   """
+   Combines the first two steps in the spectroscopy reduction process.
+   The find_and_trace function will:
+      1. Locate roughly where the target object is in the spatial direction 
+         (usually the y axis is the spatial direction) by taking the
+         median in the spectral direction so the peak in the spatial
+         direction stands out.  This step provides the initial guesses
+         for the location (mu0) and width (sig0) of the peak that are
+         then used in the second step.
+      2. Once the rough location of the peak has been found, determines how
+         its location and width change in the spectral direction.
+         That is, this will find where the peak falls in each column.
+         It returns the position (pos) and width (width) of the peak as
+         a function of x location
+
+   This function accomplishes these tasks by calling first the find_trace
+   function and the the trace_spectrum function.
+   """
+
+   mu0,sig0 = find_trace(data,dispaxis,apmin,apmax,do_plot,do_subplot)
+
+   pos,width = trace_spectrum(data,mu0,sig0,dispaxis,stepsize,muorder,
+                              sigorder,fitrange,do_plot,do_subplot)
+
+   return pos,width
 
 #-----------------------------------------------------------------------
 
