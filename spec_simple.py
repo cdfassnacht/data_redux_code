@@ -127,17 +127,20 @@ def find_blank_columns(data,comp_axis=0,output_dims=1,findblank=False):
    columns are given. By default, it is actually non-blank columns that are
    found. Setting findblank to True switches this.
    """
-   if data.ndim != 2: sys.exit("find_blank_columns takes only 2-dimensional data")
+   if data.ndim != 2:
+      sys.exit("find_blank_columns takes only 2-dimensional data")
    if output_dims==1:
       fbc_tmp = np.zeros(n.shape(data)[1-comp_axis])
       if comp_axis == 0:
          gprelim = np.where(data[int(n.shape(data)[comp_axis]/2),:] == 0)[0]
          for ifbc in range(0,len(gprelim)):
-            if len(data[data[:,gprelim[ifbc]] != 0]) == 0: fbc_tmp[gprelim[ifbc]] = 1
+            if len(data[data[:,gprelim[ifbc]] != 0]) == 0:
+               fbc_tmp[gprelim[ifbc]] = 1
       else:
          gprelim = np.where(data[:,int(n.shape(data)[comp_axis]/2)] == 0)[0]
          for ifbc in range(0,len(gprelim)):
-            if len(data[data[gprelim[ifbc],:] != 0]) == 0: fbc_tmp[gprelim[ifbc]] = 1
+            if len(data[data[gprelim[ifbc],:] != 0]) == 0:
+               fbc_tmp[gprelim[ifbc]] = 1
       if findblank: fbc_tmp = 1-fbc_tmp
       gfbc = np.where(fbc_tmp == 0)[0]
    elif output_dims==2:
@@ -145,11 +148,13 @@ def find_blank_columns(data,comp_axis=0,output_dims=1,findblank=False):
       if comp_axis == 0:
          gprelim = np.where(data[int(n.shape(data)[comp_axis]/2),:] == 0)[0]
          for ifbc in range(0,len(gprelim)):
-            if len(data[data[:,gprelim[ifbc]] != 0]) == 0: fbc_tmp[:,gprelim[ifbc]] = 1
+            if len(data[data[:,gprelim[ifbc]] != 0]) == 0:
+               fbc_tmp[:,gprelim[ifbc]] = 1
       else:
          gprelim = np.where(data[:,int(n.shape(data)[comp_axis]/2)] == 0)[0]
          for ifbc in range(0,len(gprelim)):
-            if len(data[data[gprelim[ifbc],:] != 0]) == 0: fbc_tmp[gprelim[ifbc],:] = 1
+            if len(data[data[gprelim[ifbc],:] != 0]) == 0:
+               fbc_tmp[gprelim[ifbc],:] = 1
       if findblank: fbc_tmp = 1-fbc_tmp
       gfbc = np.where(fbc_tmp == 0)
    else:
