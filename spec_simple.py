@@ -185,6 +185,10 @@ def read_spectrum(filename, informat='text', varspec=True, verbose=True, line=1)
       print ""
       print "Reading spectrum from %s" % filename
 
+   """ Set default for variance spectrum """
+   var = None
+
+   """ Read in the input spectrum """
    if informat=="mwa":
       hdulist = pyfits.open(filename)
       flux = hdulist[1].data.copy()
@@ -200,7 +204,12 @@ def read_spectrum(filename, informat='text', varspec=True, verbose=True, line=1)
       if line == 1:
          flux       = spec[:,1]
          if varspec:
-            var     = spec[:,2]
+            if spec.shape[1] < 3:
+               print ''
+               print '**Warning: varspec=True but only 2 columns in input file'
+               print ''
+            else:
+               var = spec[:,2]
       else:
          if varspec:
             flux = spec[:,2*line-1]
@@ -217,10 +226,7 @@ def read_spectrum(filename, informat='text', varspec=True, verbose=True, line=1)
           ((wavelength[-1]-wavelength[0])/(wavelength.size-1))
       print ""
 
-   if varspec:
-      return wavelength, flux, var
-   else:
-      return wavelength, flux, None
+   return wavelength, flux, var
 
 #-----------------------------------------------------------------------
 
