@@ -311,10 +311,11 @@ def plot_spectrum_array(x, flux, var=None, xlabel="Wavelength (Angstroms)",
 
 def plot_spectrum(filename, varspec=True, informat="text", 
                   xlabel="Wavelength (Angstroms)", ylabel="Relative Flux",
-                  title="Extracted Spectrum",
+                  title='default',
                   fontsize=12, docolor=True, rmsoffset=0, rmsls=None,
                   add_atm_trans=False, atmscale=1.05, atmfwhm=15.,
-                  atmoffset=0., atmls='-',verbose=True,line=1,output=False,clear=False):
+                  atmoffset=0., atmls='-', verbose=True, line=1,
+                  output=False, clear=False):
    """
    Given an input file with spectroscopy information, plot a spectrum.  
    The input file can have one of two formats: text (the default) or mwa
@@ -334,9 +335,11 @@ def plot_spectrum(filename, varspec=True, informat="text",
 
    """ Read in the spectrum, using the appropriate input format """
    if clear: plt.clf()
-   wavelength,flux,var = read_spectrum(filename, informat, varspec, verbose, line=line)
+   wavelength,flux,var = read_spectrum(filename,informat,varspec,verbose,line)
 
    """ Plot the spectrum """
+   if title == 'default':
+      title = 'Spectrum for %s' % filename
    if varspec:
       plot_spectrum_array(wavelength,flux,var=var,xlabel=xlabel,ylabel=ylabel,
                           title=title,docolor=docolor,rmsoffset=rmsoffset,
