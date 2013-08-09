@@ -270,12 +270,13 @@ def save_spectrum(filename,x,flux,var=None):
 
 def plot_spectrum_array(x, flux, var=None, xlabel="Wavelength (Angstroms)",
                         ylabel="Relative Flux", title='Extracted Spectrum', 
-                        docolor=True, rmsoffset=0, rmsls=None, fontsize=12):
+                        docolor=True, rmsoffset=0, rmsls=None, fontsize=12,clear=False):
 
    """
    Given two input arrays, plot a spectrum.
    """
 
+   if clear: plt.clf()
    if docolor:
       speccolor = 'b'
       rmscolor  = 'r'
@@ -2051,7 +2052,10 @@ def mark_spec_emission(z, w=None, f=None, labww=20., labfs=12, ticklen=0.,showz=
          xarr = np.append(xarr,x)
          if w is not None and f is not None:
             tmpmask = np.where((w>=x-dlocwin*dlam) &(w<=x+dlocwin*dlam))
-            tmpfmax = np.append(tmpfmax,f[tmpmask].max())
+            if len(f[tmpmask]) > 0:
+               tmpfmax = np.append(tmpfmax,f[tmpmask].max())
+            else:
+               tmpfmax = np.append(tmpfmax,0)
       #tickstarts = tmpfmax - 0.25*(tmpfmax-plt.ylim()[1]) 
       #labstarts  = tmpfmax - 0.4*(tmpfmax-plt.ylim()[1])
       tmpticklens = -0.25*(tmpfmax-plt.ylim()[1])
@@ -2166,7 +2170,10 @@ def mark_spec_absorption(z, w=None, f=None, labww=20., labfs=12, ticklen=0.,show
          xarr = np.append(xarr,x)
          if w is not None and f is not None:
             tmpmask = np.where((w>=x-dlocwin*dlam) &(w<=x+dlocwin*dlam))
-            tmpfmin = np.append(tmpfmin,f[tmpmask].min())
+            if len(f[tmpmask]) > 0:
+               tmpfmin = np.append(tmpfmin,f[tmpmask].min())
+            else:
+               tmpfmin = np.append(tmpfmin,0)
       #tickstart = tmpfmin - 0.2*(tmpfmin-plt.ylim()[0]) 
       #labstart  = tmpfmin - 0.4*(tmpfmin-plt.ylim()[0])
       tmpticklens = 0.25*(tmpfmin-plt.ylim()[0])
@@ -2246,7 +2253,7 @@ def plot_atm_trans(w, fwhm=15., flux=None, scale=1.05, offset=0.0,
 
 #-----------------------------------------------------------------------
 
-def smooth_boxcar(infile, filtwidth, outfile=None, varwt=True, title='Smoothed Spectrum',line=1,hasvar=True,output=False,clear=False):
+def smooth_boxcar(infile, filtwidth, outfile=None, varwt=True, title='Smoothed Spectrum',line=1,hasvar=True,output=False,clear=False,w_in=None,f_in=None,v_in=None):
    """
    Does a boxcar smooth of an input spectrum.  The default is to do
    inverse variance weighting, using the variance encoded in the third column
@@ -2257,29 +2264,38 @@ def smooth_boxcar(infile, filtwidth, outfile=None, varwt=True, title='Smoothed S
 
    """ Read the input spectrum """
    if clear: plt.clf()
-   inspec = np.loadtxt(infile)
-   wavelength = inspec[:,0]
-   if line == 1:
-      influx = inspec[:,1]
-      if(varwt):
-         if(inspec.shape[1] < 3):
-            print ""
-            print "ERROR: Inverse variance weighting requested, but input file"
-            print "       has fewer than 3 columns (ncol = %d)" % inspec.shape[1]
-            return
-         else:
-            wt = np.zeros(len(inspec[:,2]))
-            wt[inspec[:,2]!=0] = 1.0 / inspec[:,2][inspec[:,2]!=0]
-      else:
-         wt = 0.0 * influx + 1.0
+   if infile == None:
+      try:
+         t1,t2,t3 = w_in[0],f_in[0],v_in[0]
+      except:
+         print 'If infile is None, w_in, f_in, and v_in must be set for smooth_boxcar.'
+         return
+      influx,wavelength = f_in[v_in!=0],w_in[v_in!=0]
+      wt = 1.0/v_in[v_in!=0]
    else:
-      if hasvar:
-         influx = inspec[:,2*line-1]
-         if varwt:
-            wt = np.zeros(len(inspec[:,2*line]))
-            wt[inspec[:,2*line]!=0] = 1.0 / inspec[:,2*line][inspec[:,2*line]!=0]
+      inspec = np.loadtxt(infile)
+      wavelength = inspec[:,0]
+      if line == 1:
+         influx = inspec[:,1]
+         if(varwt):
+            if(inspec.shape[1] < 3):
+               print ""
+               print "ERROR: Inverse variance weighting requested, but input file"
+               print "       has fewer than 3 columns (ncol = %d)" % inspec.shape[1]
+               return
+            else:
+               wt = np.zeros(len(inspec[:,2]))
+               wt[inspec[:,2]!=0] = 1.0 / inspec[:,2][inspec[:,2]!=0]
+         else:
+            wt = 0.0 * influx + 1.0
       else:
-         influx = inspec[:,line]
+         if hasvar:
+            influx = inspec[:,2*line-1]
+            if varwt:
+               wt = np.zeros(len(inspec[:,2*line]))
+               wt[inspec[:,2*line]!=0] = 1.0 / inspec[:,2*line][inspec[:,2*line]!=0]
+         else:
+            influx = inspec[:,line]
 
    """ Smooth spectrum """
    yin = wt * influx

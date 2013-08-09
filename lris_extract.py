@@ -31,18 +31,30 @@ def clear_all(nfig=10):
 
 #-----------------------------------------------------------------------
 
-def sig_clip(data,sigthresh=3.,range_only=True):
+def sig_clip(data,sigthresh=3.,range_only=True,args=False):
    """
    Standard sigma clipping algorithm. Used specifically to create a better
    range when plotting the output spectrum. If range_only is true, only
    the sigma-clipped range is output.
    """
-   while len(data[np.fabs(data-np.median(data)) > np.std(data)*sigthresh]) > 0:
-      data = data[np.fabs(data-np.median(data)) <= np.std(data)*sigthresh]
+   if args:
+      range_only = False
+      prevlen = 0
+      g = np.where(np.fabs(data-np.median(data)) < np.std(data)*sigthresh)
+      while ((len(g[0]) < prevlen) | (prevlen == 0)):
+         prevlen = len(g[0])
+         g = np.where(np.fabs(data-np.median(data[g])) < np.std(data[g])*sigthresh)
+      g = np.where(np.fabs(data-np.median(data[g])) > np.std(data[g])*sigthresh)
+   else:
+      while np.product(np.shape((data[np.fabs(data-np.median(data)) > np.std(data)*sigthresh]))) > 0:
+         data = data[np.fabs(data-np.median(data)) <= np.std(data)*sigthresh]
    if range_only:
       return np.min(data),np.max(data)
    else:
-      return data
+      if args:
+         return g
+      else:
+         return data
 
 #-----------------------------------------------------------------------
 
