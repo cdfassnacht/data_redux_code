@@ -421,7 +421,7 @@ def subtract_sky(data, outfile, outskyspec, dispaxis='x', doplot=True):
 
 #-----------------------------------------------------------------------
 
-def make_gauss_plus_bkgd(x,mu,sigma,amp,bkgd):
+def make_gauss_plus_bkgd(x,mu,sigma,amp,bkgd,slope=0):
    """
    Creates a gaussian plus background model given input x and parameters.
    The parameter values are:
@@ -429,19 +429,94 @@ def make_gauss_plus_bkgd(x,mu,sigma,amp,bkgd):
     sigma
     amplitude
     background level
+   Setting the slope parameter creates a sloped background, with bkgd being 
+   the background level at mu.
+
    """
 
    """ Calculate y_mod using current parameter values """
    if ((np.shape(bkgd) == ()) & (np.shape(amp) == ())):
-      ymod = bkgd + amp * np.exp(-0.5 * ((x - mu)/sigma)**2)
+      ymod = bkgd + slope*(x-mu) + amp * np.exp(-0.5 * ((x - mu)/sigma)**2)
    elif np.shape(bkgd) == ():
       x,amp,mu,sigma = x*np.transpose([np.ones(len(mu))]),np.transpose([amp]),np.transpose([mu]),np.transpose([sigma])
-      ymod = bkgd + np.sum(amp * np.exp(-0.5 * ((x - mu)/sigma)**2),axis=0)
+      ymod = bkgd + slope*(x-mu[0]) + np.sum(amp * np.exp(-0.5 * ((x - mu)/sigma)**2),axis=0)
    else:
       x,amp,mu,sigma = x*np.transpose([np.ones(len(mu))]),np.transpose([amp]),np.transpose([mu]),np.transpose([sigma])
-      ymod = bkgd[0] + np.sum(amp * np.exp(-0.5 * ((x - mu)/sigma)**2),axis=0)
+      ymod = bkgd[0] + slope*(x-mu[0]) + np.sum(amp * np.exp(-0.5 * ((x - mu)/sigma)**2),axis=0)
 
    return ymod
+
+#-----------------------------------------------------------------------
+
+def fit_gauss_plus_bkgd_fixslope(p,x,y,slope):
+   """
+   Compares the data to the model.  The model is a gaussian plus a 
+    sloped background, with the slope fixed.
+   The parameter values are:
+    p[0] = background level
+    p[1] = mu
+    p[2] = sigma
+    p[3] = amplitude
+   This function now supports multiple gaussians. p[1-3] must be arrays
+   that contain the respective values of mu, sigma, and amplitude for 
+   the different gaussians. 
+   """
+
+   """ Unpack p """
+   bkgd = p[0] #background level at x=mu
+   mu   = p[1]
+   sig  = p[2]
+   amp  = p[3]
+   if len(p) > 5:
+      nps = (len(p)-2)/3
+      for inpsf in range(1,nps):
+         mu,amp,sig = np.append(mu,p[3*inpsf+1]),np.append(amp,p[3*inpsf+2]),np.append(sig,p[3*inpsf+3])
+
+   """
+   Compute the difference between model and real values
+   """
+
+   ymod = make_gauss_plus_bkgd(x,mu,sig,amp,bkgd,slope)
+   diff = y - ymod
+
+   return diff
+
+#-----------------------------------------------------------------------
+
+def fit_gauss_plus_bkgd_wslope(p,x,y):
+   """
+   Compares the data to the model.  The model is a gaussian plus a 
+    sloped background.
+   The parameter values are:
+    p[0] = background level
+    p[1] = mu
+    p[2] = sigma
+    p[3] = amplitude
+    p[4] = background slope
+   This function now supports multiple gaussians. p[1-3] must be arrays
+   that contain the respective values of mu, sigma, and amplitude for 
+   the different gaussians. 
+   """
+
+   """ Unpack p """
+   bkgd = p[0] #background level at x=mu
+   mu   = p[1]
+   sig  = p[2]
+   amp  = p[3]
+   slope = p[4]
+   if len(p) > 5:
+      nps = (len(p)-2)/3
+      for inpsf in range(1,nps):
+         mu,amp,sig = np.append(mu,p[3*inpsf+2]),np.append(amp,p[3*inpsf+3]),np.append(sig,p[3*inpsf+4])
+
+   """
+   Compute the difference between model and real values
+   """
+
+   ymod = make_gauss_plus_bkgd(x,mu,sig,amp,bkgd,slope)
+   diff = y - ymod
+
+   return diff
 
 #-----------------------------------------------------------------------
 
@@ -2384,3 +2459,39 @@ def calc_lineflux(wavelength,flux,bluemin,bluemax,redmin,redmax,var=None,
    intflux = (lineflux * delwave).sum()
    print intflux
 
+def spec_linefit(w,f,mu,wrange=None,bkgd=None,slope=0,amp=None,sig=None,fixslope=False,estimatemu=True,mf=100000,doplot=False):
+   # Fits a gaussian to a spectral line. Only mu (the mean of the gaussian) needs to be given. 
+   # Guesses for parameters that aren't given will be estimated. If no range is given, data within 
+   # 50 pixels will be used. The background is sloped by default and can be made fixed by setting
+   # fixslope=True (will essentially turn off the slope if slope is also zero).
+   if wrange == None: wrange = [mu-50,mu+50]
+   gwr = np.where((w>=wrange[0])&(w<=wrange[1]))[0]
+   if estimatemu:
+      mu = w[gwr[np.argsort(f[gwr])[-1]]]
+   gmu = np.argsort(np.fabs(w-mu))[0]
+   if bkgd==None: bkgd = np.median(f[gwr])
+   if amp==None: amp = f[gmu]
+   if sig==None:
+      ft,wt,gmut = amp,gmu,gmu
+      while ((ft > bkgd) & (wt > wrange[0]+1)):
+         gmut -= 1
+         wt,ft = w[gmut],f[gmut]
+      wl = mu-wt
+      ft,wt,gmut = amp,gmu,gmu
+      while ((ft > bkgd) & (wt < wrange[1]-1)):
+         gmut += 1
+         wt,ft = w[gmut],f[gmut]
+      wu = wt-mu
+      sig = 0.25*(wl+wu)
+   p = np.array([bkgd,mu,sig,amp])
+   if fixslope:
+      pt,ier = optimize.leastsq(fit_gauss_plus_bkgd_fixslope,p,(w[gwr],f[gwr],slope),maxfev=mf)
+   else:
+      p = np.append(p,slope)
+      pt,ier = optimize.leastsq(fit_gauss_plus_bkgd_wslope,p,(w[gwr],f[gwr]),maxfev=mf)
+   if doplot:
+      xt = np.arange(wrange[0],wrange[1],(wrange[1]-wrange[0])/200.,dtype='float')
+      if not fixslope: slope = pt[4]
+      yt = make_gauss_plus_bkgd(xt,pt[1],pt[2],pt[3],pt[0],slope=slope)
+      plt.plot(xt,yt,color='green')
+   return pt,ier
