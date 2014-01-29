@@ -439,10 +439,10 @@ def make_gauss_plus_bkgd(x,mu,sigma,amp,bkgd,slope=0):
       ymod = bkgd + slope*(x-mu) + amp * np.exp(-0.5 * ((x - mu)/sigma)**2)
    elif np.shape(bkgd) == ():
       x,amp,mu,sigma = x*np.transpose([np.ones(len(mu))]),np.transpose([amp]),np.transpose([mu]),np.transpose([sigma])
-      ymod = bkgd + slope*(x-mu[0]) + np.sum(amp * np.exp(-0.5 * ((x - mu)/sigma)**2),axis=0)
+      ymod = bkgd + slope*(x[0]-mu[0]) + np.sum(amp * np.exp(-0.5 * ((x - mu)/sigma)**2),axis=0)
    else:
       x,amp,mu,sigma = x*np.transpose([np.ones(len(mu))]),np.transpose([amp]),np.transpose([mu]),np.transpose([sigma])
-      ymod = bkgd[0] + slope*(x-mu[0]) + np.sum(amp * np.exp(-0.5 * ((x - mu)/sigma)**2),axis=0)
+      ymod = bkgd[0] + slope*(x[0]-mu[0]) + np.sum(amp * np.exp(-0.5 * ((x - mu)/sigma)**2),axis=0)
 
    return ymod
 
@@ -470,7 +470,7 @@ def fit_gauss_plus_bkgd_fixslope(p,x,y,slope):
    if len(p) > 5:
       nps = (len(p)-2)/3
       for inpsf in range(1,nps):
-         mu,amp,sig = np.append(mu,p[3*inpsf+1]),np.append(amp,p[3*inpsf+2]),np.append(sig,p[3*inpsf+3])
+         mu,amp,sig = np.append(mu,p[3*inpsf+1]),np.append(amp,p[3*inpsf+3]),np.append(sig,p[3*inpsf+2])
 
    """
    Compute the difference between model and real values
@@ -507,7 +507,7 @@ def fit_gauss_plus_bkgd_wslope(p,x,y):
    if len(p) > 5:
       nps = (len(p)-2)/3
       for inpsf in range(1,nps):
-         mu,amp,sig = np.append(mu,p[3*inpsf+2]),np.append(amp,p[3*inpsf+3]),np.append(sig,p[3*inpsf+4])
+         mu,amp,sig = np.append(mu,p[3*inpsf+2]),np.append(amp,p[3*inpsf+4]),np.append(sig,p[3*inpsf+3])
 
    """
    Compute the difference between model and real values
@@ -542,7 +542,7 @@ def fit_gauss_plus_bkgd(p,x,y):
    if len(p) > 4:
       nps = (len(p)-1)/3
       for inpsf in range(1,nps):
-         mu,amp,sig = np.append(mu,p[3*inpsf+1]),np.append(amp,p[3*inpsf+2]),np.append(sig,p[3*inpsf+3])
+         mu,amp,sig = np.append(mu,p[3*inpsf+1]),np.append(amp,p[3*inpsf+3]),np.append(sig,p[3*inpsf+2])
 
    """
    Compute the difference between model and real values
@@ -781,7 +781,7 @@ def find_peak(data,dispaxis="x",mu0=None,sig0=None,fixmu=False,fixsig=False,
                nps = (len(p_out)-1)/3
             ampout,sigout,muout = np.zeros(0),np.zeros(0),np.zeros(0)
             for inps in range(0,nps):
-               muout,ampout,sigout = np.append(muout,p_out[3*inps+1]),np.append(ampout,p_out[3*inps+2]),np.append(sigout,p_out[3*inps+2])
+               muout,ampout,sigout = np.append(muout,p_out[3*inps+1]),np.append(ampout,p_out[3*inps+2]),np.append(sigout,p_out[3*inps+3])
             p_out = [p_out[0]*np.ones(len(mu0)),mu0,sigout,ampout]
 
    # Give results
@@ -983,8 +983,8 @@ def plot_multiple_peaks(cdat,tp,theight,apmin=-4.,apmax=4.,maxpeaks=2,fig=4,clea
 def find_multiple_peaks(data,dispaxis="x",apmin=-4.,apmax=4.,maxpeaks=2,output_plot=None,output_plot_dir=None,check_aps=False):
    tdata = data.copy()
    gfbc = find_blank_columns(tdata)
-   if dispaxis == 'x':
-      data[:,gfbc]
+   #if dispaxis == 'x':
+   #   data[:,gfbc]
    tp = np.zeros((maxpeaks,4,))
    p_prelim = find_peak(tdata,dispaxis=dispaxis,apmin=apmin,apmax=apmax,showplot=False,do_subplot=False,nofit=True)
    tp[0] = p_prelim
@@ -1009,6 +1009,7 @@ def find_multiple_peaks(data,dispaxis="x",apmin=-4.,apmax=4.,maxpeaks=2,output_p
          tp[ifmp] = p_prelim
          tp[ifmp][1] = x[gx[int(tp[ifmp][1])-1]]
          gxprev = gx.copy()
+   print tp
    tp = find_peak(tdata,dispaxis=dispaxis,apmin=apmin,apmax=apmax,showplot=False,do_subplot=False,mu0=tp[:,1])
    tp[0] = np.ones(len(tp[1]))*tp[0]
    tp = np.transpose(tp)
@@ -2495,3 +2496,223 @@ def spec_linefit(w,f,mu,wrange=None,bkgd=None,slope=0,amp=None,sig=None,fixslope
       yt = make_gauss_plus_bkgd(xt,pt[1],pt[2],pt[3],pt[0],slope=slope)
       plt.plot(xt,yt,color='green')
    return pt,ier
+
+def specfit_redshifts(w,f,z):
+   # Calculates redshift of spectrum based off of spectral lines within
+   # current plot bounds given wavelength and flux data and an approximate
+   # value for the redshift. 
+
+   linelist_e = np.array([
+         1216.,1549.,1909.,2800.,
+         3726.03,3728.82,4861.33,4962.,5007.,#5199.,6300.,
+         6548.,6562.8,
+         6583.5,6716.4,6730.8,10900.,12800.,18700.])
+   linename_e = [
+      "Ly-alpha","CIV","CIII]","MgII",
+      "[OII]","",'H-beta','[OIII]','[OIII]',#'[NI]','[OI]',
+      '[NII]','H-alpha',
+      '[NII]','[SII]','','Pa-gamma','Pa-beta','Pa-alpha']
+
+   lineinfo_e = np.array([\
+      ("Ly-alpha",  1216.,   r"Ly $\alpha$",1,True),\
+      ("C IV",      1549.,   "C IV",        1,True),\
+      ("C III]",    1909.,   "C III]",      1,True),\
+      ("Mg II",     2800.,   "Mg II",       1,True),\
+      ("[O II]",    3726.03, "[O II]",      1,True),\
+      ("[O II]",    3728.82, "[O II]",      1,False),\
+      ("H-beta",    4861.33, r"H$\beta$",    1,True),\
+      ("[O III]",   4962.,   "[O III]",     1,False),\
+      ("[O III]",   5007.,   "[O III]",     1,True),\
+      #("[N I]",     5199.,   "[N I]",       1,False),\
+      ("[O I]",     6300.,   "[O I]",       1,True),\
+      ("[N II]",    6548.,   "[N II]",      1,True),\
+      ("H-alpha",   6562.8,  r"H$\alpha$",  1,True),\
+      ("[N II]",    6583.5,  "[N II]",      1,True),\
+      ("[S II]",    6716.4,  "[S II]",      1,False),\
+      ("[S II]",    6730.8,  "[S II]",      1,True),\
+      ("Pa-gamma", 10900.,   r"Pa $\gamma$",1,True),\
+      ("Pa-beta",  12800.,   r"Pa $\beta$", 1,True),\
+      ("Pa-alpha", 18700.,   r"Pa $\alpha$",1,True)\
+      ],\
+      dtype=[('name','S10'),('wavelength',float),('label','S10'),\
+             ('dir',int),('plot',bool)]\
+      )
+
+   linelist_a = np.array([
+         3883,3933.667,3968.472,4101,4305,4340,4383,4455,4531,4861,5176,5893])
+   linename_a = [
+      "CN bandhead","CaII K","CaII H","H-delta","G-band","H-gamma","Fe4383","Ca4455","Fe4531","H-beta","Mg I (b)","Na I (D)"]
+
+   lineinfo_a = np.array([\
+       ("CN bandhead",   3883,       "CN red",1,True),\
+       ("CaII K",        3933.667,   "CaII K",1,True),\
+       ("CaII H",        3968.472,   "CaII H",1,True),\
+       ("H-delta",       4101,       r"H$\delta$",1,True),\
+       ("G-band",        4305,       "G-band",1,True),\
+       ("H-gamma",       4340,       r"H$\gamma$",1,True),\
+       ("Fe4383",        4383,       "Fe4383",1,True),\
+       ("Ca4455",        4455,       "Ca4455",1,True),\
+       ("Fe4531",        4531,       "Fe4531",1,True),\
+       ("H-beta",        4861,       r"H$\beta$",1,True),\
+       ("Mg I (b)",      5176,       "Mg b",1,True),\
+       ("Na I (D)",      5893,       "Na D",1,True)\
+      ],\
+      dtype=[('name','S10'),('wavelength',float),('label','S10'),\
+             ('dir',int),('plot',bool)]\
+      )
+
+   lammin,lammax = w.min(),w.max()
+   if plt.xlim()[0] > lammin: lammin = plt.xlim()[0]
+   if plt.xlim()[1] < lammax: lammax = plt.xlim()[1]
+   dlam = w[1] - w[0]
+   ff = f[(w>=plt.xlim()[0]) & (w<=plt.xlim()[1])]
+   fluxdiff = ff.max() - ff.min()
+   zlines = (z+1.0) * lineinfo_e['wavelength']
+   mask = np.logical_and(zlines>lammin,zlines<lammax)
+   tmplines = lineinfo_e[mask]
+   lregions = []
+   for i in range(0,len(tmplines)):
+      if i == 0: 
+         lregions = [[zlines[mask][i]-50,zlines[mask][i]+50]]
+      else:
+         lregions = np.concatenate((lregions,[[zlines[mask][i]-50,zlines[mask][i]+50]]))
+      #plt.axvspan(zlines[mask][i]-50,zlines[mask][i]+50,ymin=plt.ylim[0],ymax=ply.ylim[1],alpha=0.3,eg='k',fg='g')
+
+   obj = IDLines(w,f,lregions)
+   #this is where you can use you mouse to choose which regions to use
+   # for the spectral lines. It will hold here until a key is pressed.
+   go_on=False
+   while not go_on: go_on = pylab.waitforbuttonpress()
+   obs.regions.sort()
+   lines = []
+   delete_flag_arr = np.zeros(np.shape(obs.regions)[0],dtype='bool')
+   use_flag_arr = np.zeros(np.shape(obs.regions)[0],dtype='bool')
+   for ireg in range(0,np.shape(ireg)[0]):
+      x1,x2 = obs.regions[ireg][0],obs.regions[ireg][1]
+      gt = np.where((zlines > x1) & (zlines < x2))[0]
+      if len(gt) == 0:
+         print 'No known lines in highlighted region: [%.1f,%.1f]'%(x1,x2)
+         delete_flag_arr[ireg] = True
+      elif len(gt) == 1:
+         use_flag_arr[gt[0]] = True
+      else:
+         # If multiple lines in range, choose one that's closest to center
+         g_closest2center = gt[np.argsort(np.abs(0.5*(x1+x2)-zlines[gt]))[0]]
+         use_flag_arr[g_closest2center] = True
+   obs.regions = np.delete(obs.regions,np.arange(np.shape(obs.regions)[0])[delete_flag_arr],axis=0)
+   line2fit = lineinfo_e[use_flag_arr]
+   calc_zs = np.zeros(len(line2fit))
+   for il in range(0,len(calc_zs)):
+      pt,ier = spec_linefit(w,f,mu,wrange=[obs.regions[il][0],obs.regions[il][1]],doplot=True)
+      calc_zs[il] = mu*1./line2fit['wavelength'][il]-1.
+   return np.mean(calc_zs),np.std(calc_zs)/np.sqrt(len(calc_zs))
+
+import pylab,numpy
+class IDLines:
+   # taken and modified from Matt's lris_redux pipeline
+   def __init__(self,w,f,regions=[],ltype='emission'):
+      self.data = f
+      self.orig = [r for r in regions]
+      self.x = w
+      self.plot = pylab.plot(self.x,self.data)[0]
+      self.canvas = self.plot.get_figure().canvas
+
+      self.regions = regions
+      self.shades = []
+      if ltype == 'emission':
+         rcol = 'g'
+      else:
+         rcol = 'b'
+      for x1,x2 in regions:
+         self.shades.append(pylab.axvspan(x1,x2,ec='k',alpha=0.3,fc=rcol))
+
+      self.start = None
+      self.end = None
+      self.domotion = False
+      self.span = None
+
+      print """
+        Click and drag the left mouse button to highlight lines.
+        Click the right mouse button to remove a line.
+
+        Press any key to move on.
+        """
+      self.keyid = self.canvas.mpl_connect('key_press_event',self.key_press)
+      self.connect()
+      pylab.show(block=False)
+
+
+   def connect(self):
+      self.pressid = self.canvas.mpl_connect('button_press_event',
+                                                self.on_press)
+      self.moveid = self.canvas.mpl_connect('motion_notify_event',
+                                                self.on_motion)
+      self.offid = self.canvas.mpl_connect('button_release_event',
+                                                self.on_release)
+
+   def on_press(self,event):
+      if self.canvas.toolbar.mode!='':
+         if event.button==2:
+            self.canvas.toolbar.zoom()
+            self.canvas.toolbar.pan()
+            self.canvas.toolbar.pan()
+         return
+
+      if event.xdata==None or event.ydata==None: # Not in axes
+         return
+
+      indx = abs(self.x-event.xdata).argmin()
+      if event.button==3:
+         for i in range(len(self.regions)):
+            x1,x2 = self.regions[i]
+            if indx>=x1 and indx<=x2:
+               self.shades[i].set_visible(False)
+               del self.shades[i]
+               del self.regions[i]
+               pylab.draw()
+               return
+
+      if event.button==1:
+         self.domotion = True
+         self.start = indx
+         self.span = pylab.axvspan(indx,indx,ec='k',alpha=0.3,fc='g')
+
+   def on_motion(self,event):
+      if self.domotion==False:
+         return
+
+      if event.xdata is not None:
+         self.span.set_xy([[self.start,0.],[self.start,1.],[event.xdata,1.],[event.xdata,0.],[self.start,0.]])
+         self.end = event.xdata
+         pylab.draw()
+
+   def on_release(self,event):
+      if self.domotion is False:
+         return
+      if event.xdata is None:
+         end = self.end
+      else:
+         end = event.xdata
+      end = int(end)
+      start = self.start
+      if start>end:
+         start,end = end,start
+      self.span.set_xy([[start,0.],[start,1.],[end,1.],[end,0.],[start,0.]])
+      if end-start>5:
+         self.regions.append([start,end+1])
+         self.shades.append(self.span)
+      else:
+         self.span.set_visible(False)
+      self.span = None
+      self.start = None
+      self.end = None
+      self.domotion = False
+      pylab.draw()
+
+   def key_press(self,event):
+      #if event.key.lower()=='d':
+      self.canvas.mpl_connect(self.keyid)
+      self.canvas.mpl_disconnect(self.pressid)
+      self.canvas.mpl_disconnect(self.moveid)
+      self.canvas.mpl_disconnect(self.offid)
+      pylab.draw()
