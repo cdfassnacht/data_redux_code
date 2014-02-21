@@ -270,7 +270,7 @@ def save_spectrum(filename,x,flux,var=None):
 
 def plot_spectrum_array(x, flux, var=None, xlabel="Wavelength (Angstroms)",
                         ylabel="Relative Flux", title='Extracted Spectrum', 
-                        docolor=True, rmsoffset=0, rmsls=None, fontsize=12,clear=False):
+                        docolor=True, rmsoffset=0, rmsls=None, fontsize=12,clear=False,customcolors=None):
 
    """
    Given two input arrays, plot a spectrum.
@@ -280,6 +280,12 @@ def plot_spectrum_array(x, flux, var=None, xlabel="Wavelength (Angstroms)",
    if docolor:
       speccolor = 'b'
       rmscolor  = 'r'
+      if customcolors != None:
+         if np.shape(customcolors) == ():
+            speccolor = customcolors
+         else:
+            speccolor = customcolors[0]
+            rmscolor = customcolors[1]
    else:
       speccolor = 'k'
       rmscolor  = 'k'
@@ -2220,6 +2226,7 @@ def mark_spec_absorption(z, w=None, f=None, labww=20., labfs=12, ticklen=0.,show
          w = None
       else:
          lammin,lammax = w.min(),w.max()
+         print lammin,lammax
          if plt.xlim()[0] > lammin: lammin = plt.xlim()[0]
          if plt.xlim()[1] < lammax: lammax = plt.xlim()[1]
          dlam = w[1] - w[0]
@@ -2239,6 +2246,7 @@ def mark_spec_absorption(z, w=None, f=None, labww=20., labfs=12, ticklen=0.,show
       print "%-9s %8.2f" % (lineinfo['name'][i],zlines[i])
    mask = np.logical_and(zlines>lammin,zlines<lammax)
    tmplines = lineinfo[mask]
+   print tmplines
    if (len(tmplines) > 0):
       tmpfmin,xarr = np.zeros(0),np.zeros(0)
       for i in tmplines:
@@ -2262,6 +2270,7 @@ def mark_spec_absorption(z, w=None, f=None, labww=20., labfs=12, ticklen=0.,show
          if w is not None and f is not None:
             tickstart = tmpfmin[i]-0.5*tmpticklen
             labstart = tmpfmin[i]-2*tmpticklen
+            #print tmpfmin[i],plt.ylim()[0],3*tmpticklen
             if tmpfmin[i]-plt.ylim()[0] > 3*tmpticklen:
                plt.plot([xarr[i],xarr[i]],[tickstart-tmpticklen,tickstart],'k')
                #print i['label'],tickstart,labstart,tmpticklen,tmpfmin
@@ -2329,7 +2338,7 @@ def plot_atm_trans(w, fwhm=15., flux=None, scale=1.05, offset=0.0,
 
 #-----------------------------------------------------------------------
 
-def smooth_boxcar(infile, filtwidth, outfile=None, varwt=True, title='Smoothed Spectrum',line=1,hasvar=True,output=False,clear=False,w_in=None,f_in=None,v_in=None):
+def smooth_boxcar(infile, filtwidth, outfile=None, varwt=True, title='Smoothed Spectrum',line=1,hasvar=True,output=False,clear=False,w_in=None,f_in=None,v_in=None,plotvar=True,customcolors=None):
    """
    Does a boxcar smooth of an input spectrum.  The default is to do
    inverse variance weighting, using the variance encoded in the third column
@@ -2385,10 +2394,10 @@ def smooth_boxcar(infile, filtwidth, outfile=None, varwt=True, title='Smoothed S
       outvar[outvar!=0] = 1.0 / outvar[outvar!=0]
 
    """ Plot the smoothed spectrum """
-   if varwt:
-      plot_spectrum_array(wavelength,outflux,outvar,title=title)
+   if ((varwt) & (plotvar)):
+      plot_spectrum_array(wavelength,outflux,outvar,title=title,customcolors=customcolors)
    else:
-      plot_spectrum_array(wavelength,outflux,title=title)
+      plot_spectrum_array(wavelength,outflux,title=title,customcolors=customcolors)
 
    """ Save the output file if desired """
    if(outfile):
