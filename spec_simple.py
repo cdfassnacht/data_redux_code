@@ -3,7 +3,8 @@ spec_simple.py - A library of functions to do various basic CCD spectroscopy
   processing operations
 
 Functions:
-   xxxx  - descriptions here
+   clear_all  - clears all of the figure windows
+   xxxx       - more descriptions here
 """
 
 from math import sqrt,pi
